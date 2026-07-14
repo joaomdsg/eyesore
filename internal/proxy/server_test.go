@@ -202,6 +202,24 @@ func TestAReloadRequestReachesEveryOpenTab(t *testing.T) {
 	waitFor(t, tab2, "reload")
 }
 
+func TestReloadMethodBroadcastsToTabs(t *testing.T) {
+	t.Parallel()
+	st := store.New(filepath.Join(t.TempDir(), "notes.json"))
+	backend := httptest.NewServer(appServing("text/html", "<body></body>"))
+	t.Cleanup(backend.Close)
+	target, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+	p := proxy.NewServer(target, st, []byte(overlayJS), 20*time.Millisecond)
+	t.Cleanup(p.Close)
+	front := httptest.NewServer(p)
+	t.Cleanup(front.Close)
+
+	tab := sse(t, front.URL)
+	p.Reload() // in-process path, no HTTP POST, no ReloadURL
+
+	waitFor(t, tab, "reload")
+}
+
 func TestAgentActivityWrittenByAnotherProcessShowsUpInTheOverlay(t *testing.T) {
 	t.Parallel()
 	st := store.New(filepath.Join(t.TempDir(), "notes.json"))
@@ -233,6 +251,20 @@ func TestQuietStoresSendNoNoteEventsSoTabsDoNotChurn(t *testing.T) {
 		t.Fatalf("store never changed but got event %q", e)
 	case <-time.After(150 * time.Millisecond):
 	}
+}
+
+func TestAFreshTabCanReadCurrentAgentStateInsteadOfWaitingForChanges(t *testing.T) {
+	t.Parallel()
+	st := store.New(filepath.Join(t.TempDir(), "notes.json"))
+	require.NoError(t, st.Merge([]notes.Note{{ID: "es_1", Selector: "#x", Note: "fix", DispatchedAt: 5}}))
+	require.NoError(t, st.MarkWorking("es_1"))
+	base := startWith(t, appServing("text/html", "<body></body>"), st)
+
+	code, header, body := get(t, base+"/__eyesore/notes")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Contains(t, header.Get("Content-Type"), "json")
+	assert.Contains(t, body, `"agentStatus":"working"`,
+		"a page opened mid-fix must render the badge state it missed")
 }
 
 func TestASecondDispatchThroughTheProxyKeepsTheFirst(t *testing.T) {

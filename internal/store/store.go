@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/joaomdsg/eyesore/internal/notes"
@@ -51,38 +52,44 @@ func (s *Store) Load() ([]notes.Note, error) {
 
 // Merge upserts dispatched notes into the store.
 func (s *Store) Merge(incoming []notes.Note) error {
-	existing, err := s.Load()
-	if err != nil {
-		return err
-	}
-	return s.write(notes.Merge(existing, incoming))
+	return s.locked(func() error {
+		existing, err := s.Load()
+		if err != nil {
+			return err
+		}
+		return s.write(notes.Merge(existing, incoming))
+	})
 }
 
 // MarkFixed stamps a note as fixed at now (unix ms) with the agent's summary
 // and persists.
 func (s *Store) MarkFixed(id string, now int64, summary string) error {
-	all, err := s.Load()
-	if err != nil {
-		return err
-	}
-	updated, err := notes.MarkFixed(all, id, now, summary)
-	if err != nil {
-		return err
-	}
-	return s.write(updated)
+	return s.locked(func() error {
+		all, err := s.Load()
+		if err != nil {
+			return err
+		}
+		updated, err := notes.MarkFixed(all, id, now, summary)
+		if err != nil {
+			return err
+		}
+		return s.write(updated)
+	})
 }
 
 // MarkWorking flags a note as picked up by an agent and persists.
 func (s *Store) MarkWorking(id string) error {
-	all, err := s.Load()
-	if err != nil {
-		return err
-	}
-	updated, err := notes.MarkWorking(all, id)
-	if err != nil {
-		return err
-	}
-	return s.write(updated)
+	return s.locked(func() error {
+		all, err := s.Load()
+		if err != nil {
+			return err
+		}
+		updated, err := notes.MarkWorking(all, id)
+		if err != nil {
+			return err
+		}
+		return s.write(updated)
+	})
 }
 
 // Await polls until a pending note dispatched after since (unix ms) appears,
@@ -102,6 +109,25 @@ func (s *Store) Await(ctx context.Context, since int64, poll time.Duration) ([]n
 		case <-time.After(poll):
 		}
 	}
+}
+
+// locked serializes read-modify-write cycles across goroutines AND processes
+// (harness, proxy, MCP server all mutate the same file) via an advisory flock
+// on a sidecar; readers stay lock-free thanks to atomic renames.
+func (s *Store) locked(fn func() error) error {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return fn()
 }
 
 // write persists atomically via temp file + rename so a concurrent reader

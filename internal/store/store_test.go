@@ -2,8 +2,10 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -112,6 +114,55 @@ func TestMarkFixedOnAFreshProjectReportsUnknownNote(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)
 	assert.Error(t, s.MarkFixed("ghost", 500, ""))
+}
+
+func TestConcurrentWritersLoseNothing(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "notes.json")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			// each writer is its own instance, like separate processes
+			_ = store.New(path).Merge([]notes.Note{n(fmt.Sprintf("es_%d", i), int64(i+1))})
+		}(i)
+	}
+	wg.Wait()
+
+	got, err := store.New(path).Load()
+	require.NoError(t, err)
+	assert.Len(t, got, 20, "read-modify-write must not drop concurrent dispatches")
+}
+
+func TestConcurrentFixesAllStick(t *testing.T) {
+	t.Parallel()
+	// the real incident: three mark_fixed calls served concurrently by the
+	// MCP SDK — every one reported success, only the last write survived
+	path := filepath.Join(t.TempDir(), "notes.json")
+	s := store.New(path)
+	require.NoError(t, s.Merge([]notes.Note{n("a", 1), n("b", 2), n("c", 3)}))
+
+	var wg sync.WaitGroup
+	for _, id := range []string{"a", "b", "c"} {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			assert.NoError(t, store.New(path).MarkFixed(id, 500, "done"))
+		}(id)
+	}
+	wg.Wait()
+
+	got, err := s.Load()
+	require.NoError(t, err)
+	fixed := 0
+	for _, g := range got {
+		if g.FixedAt != 0 {
+			fixed++
+		}
+	}
+	assert.Equal(t, 3, fixed, "a fix that reported success must never be silently undone")
 }
 
 func TestAwaitWakesWhenANewNoteIsDispatched(t *testing.T) {

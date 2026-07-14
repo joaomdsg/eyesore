@@ -16,37 +16,44 @@ go install github.com/joaomdsg/eyesore/cmd/eyesore@latest
 
 ## Use (proxy mode)
 
-1. Put eyesore in front of your dev server and browse through it:
-
-   ```sh
-   eyesore proxy -url http://localhost:3000
-   # browse http://127.0.0.1:4400 in any browser
-   ```
-
-2. Hook your agent up (once, from the same directory):
+1. Hook your agent up once, from your project directory:
 
    ```sh
    claude mcp add eyesore -- eyesore mcp
    ```
 
+2. Ask your agent to start eyesore in front of your dev server. It calls the
+   `start_proxy` tool, which stands up a reverse proxy that injects the overlay
+   and opens your browser to it:
+
+   > *"start eyesore in front of my app on :3000, then await my notes and fix them"*
+
+   ```
+   start_proxy(targetPort=3000, proxyPort=4400)   # your browser opens at http://127.0.0.1:4400
+   ```
+
 3. Toggle the overlay (bottom-right), click elements, write notes,
-   **Dispatch**. Tell your agent: *"await eyesore notes and fix them"*.
+   **Dispatch**. The agent picks them up, fixes them, and refreshes your page.
 
 The agent doesn't just read your notes — it gets the browser:
 
+- **Control**: `start_proxy` (launch the proxy + open your browser — start
+  here; call again to move ports), `reload_page` (refresh your tabs after a
+  rebuild — needs `start_proxy` first).
 - **Notes**: `await_notes` (blocks until you dispatch — the trigger),
   `list_notes`, `mark_working` (badge turns amber), `mark_fixed` + summary
-  (badge turns green, summary shows in the overlay), `reload_page`.
+  (badge turns green, summary shows in the overlay).
 - **Eyes**: `get_screenshot` returns the element PNG captured at dispatch;
   `browser_screenshot` captures the live page or element to verify a fix.
 - **Hands**: `browser_eval` (run JS, read computed styles/state),
   `browser_html` (live DOM), `browser_navigate`, `browser_console`
   (logs/warnings/errors).
 
-In proxy mode the MCP drives its own headless Chromium (also used to
-capture element screenshots on every dispatch). Browser ↔ proxy is plain
-HTTP + SSE; websockets and your dev server's HMR stream pass through
-untouched.
+`start_proxy` runs the proxy inside the `eyesore mcp` server — no second
+process to manage. For the element screenshots captured on every dispatch it
+attaches to your harness browser if one is running (see below), otherwise it
+launches its own headless Chromium. Browser ↔ proxy is plain HTTP + SSE;
+websockets and your dev server's HMR stream pass through untouched.
 
 ## Harness mode
 

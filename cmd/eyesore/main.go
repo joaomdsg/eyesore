@@ -129,7 +129,7 @@ func handleBinding(ctx context.Context, be *runtime.EventBindingCalled, outPath,
 	case "esDelete":
 		e, ok := parseDeleteEvent([]byte(be.Payload))
 		if ok {
-			fmt.Printf("note deleted: %s\n", e.ID)
+			fmt.Printf("note closed: %s\n", e.ID)
 		}
 
 	case "esEdit":

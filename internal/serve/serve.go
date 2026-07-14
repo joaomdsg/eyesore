@@ -27,8 +27,6 @@ type Handlers struct {
 	outDir string
 	now    func() int64
 	poll   time.Duration
-	// ReloadURL is the proxy's reload endpoint; empty outside proxy mode.
-	ReloadURL string
 }
 
 func New(s *store.Store, outDir string, now func() int64) *Handlers {

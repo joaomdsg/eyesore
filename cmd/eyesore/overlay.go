@@ -32,34 +32,41 @@ const overlayJS = `
   if(window.__es){window.__es.ensure();return;}
   var notes=[],enabled=false,dialogOpen=false;
 
-  function isES(el){return !!(el&&el.closest&&el.closest('[data-es]'));}
+  function isES(el){return !!(el&&el.closest&&(el.closest('[data-es]')||el.closest('[data-es-root]')));}
 
   var proxyMode=!window.esDispatch;
   function ship(json){
     if(window.esDispatch){window.esDispatch(json);return;}
     fetch('/__eyesore/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
   }
+  function applyServerNotes(list){
+    var touched=false;
+    list.forEach(function(c){
+      var found=false;
+      for(var i=0;i<notes.length;i++){
+        if(notes[i].id===c.id){
+          notes[i].agentStatus=c.agentStatus;
+          notes[i].agentSummary=c.agentSummary;
+          notes[i].fixedAt=c.fixedAt;
+          found=true;touched=true;
+        }
+      }
+      if(!found&&c.url===location.href){notes.push(c);touched=true;}
+    });
+    if(touched){save();applyEnabled();}
+  }
   function listen(){
     if(!proxyMode||window.__esSSE)return;
+    // reconcile first: this tab may have missed changes while closed
+    fetch('/__eyesore/notes').then(function(r){return r.json();})
+      .then(applyServerNotes).catch(function(){});
     try{
       var es=new EventSource('/__eyesore/events');window.__esSSE=es;
+      es.onopen=function(){sseLive=true;renderStatus();};
+      es.onerror=function(){sseLive=false;renderStatus();};
       es.addEventListener('reload',function(){location.reload();});
       es.addEventListener('notes',function(ev){
-        try{
-          var changed=JSON.parse(ev.data)||[];
-          var touched=false;
-          changed.forEach(function(c){
-            for(var i=0;i<notes.length;i++){
-              if(notes[i].id===c.id){
-                notes[i].agentStatus=c.agentStatus;
-                notes[i].agentSummary=c.agentSummary;
-                notes[i].fixedAt=c.fixedAt;
-                touched=true;
-              }
-            }
-          });
-          if(touched){save();renderBadges();}
-        }catch(_){}
+        try{applyServerNotes(JSON.parse(ev.data)||[]);}catch(_){}
       });
     }catch(_){}
   }
@@ -69,7 +76,8 @@ const overlayJS = `
   function esc(s){return(s||'').replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 
   function selectorOf(el){
-    if(!el||el.nodeType!==1)return'';
+    if(!el||el.nodeType!==1)return'body';
+    if(el.tagName==='HTML'||el.tagName==='BODY')return el.tagName.toLowerCase();
     if(el.id)return'#'+el.id;
     var parts=[],cur=el,depth=0;
     while(cur&&cur.nodeType===1&&cur.tagName!=='BODY'&&depth<6){
@@ -80,18 +88,21 @@ const overlayJS = `
         if(same.length>1)s+=':nth-of-type('+(Array.prototype.indexOf.call(p.children,cur)+1)+')';}
       parts.unshift(s);cur=cur.parentNode;depth++;
     }
-    return parts.join(' > ');
+    return parts.join(' > ')||el.tagName.toLowerCase();
   }
 
-  // ── stylesheet (injected once) ─────────────────────────────
-  function injectStyles(){
-    if(document.getElementById('es-css'))return;
-    var s=document.createElement('style');s.id='es-css';
-    s.textContent=[
+  // ── stylesheets ────────────────────────────────────────────
+  // Chrome lives in a shadow root so page CSS (e.g. global button rules)
+  // cannot restyle it; badges and outlines attach to page elements, so their
+  // rules must stay in the light DOM.
+  function injectShadowStyles(){
+    if(root.querySelector('#es-css'))return;
+    var st=document.createElement('style');st.id='es-css';
+    st.textContent=[
+      ':host{all:initial}',
+      '*{box-sizing:border-box}',
       '@keyframes es-fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}',
-      '@keyframes es-scaleIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}',
       '@keyframes es-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,0)}50%{box-shadow:0 0 0 6px rgba(255,59,48,0.15)}}',
-      '@keyframes es-glow{0%,100%{box-shadow:0 0 4px rgba(255,59,48,0.3)}50%{box-shadow:0 0 12px rgba(255,59,48,0.5)}}',
       '',
       '[data-es=hi]{position:fixed;pointer-events:none;z-index:2147483646;',
         'border:2px solid rgba(255,59,48,0.6);background:rgba(255,59,48,0.06);',
@@ -104,23 +115,52 @@ const overlayJS = `
         'box-shadow:0 4px 20px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,0.06);',
         'backdrop-filter:blur(8px);padding:12px 14px;',
         'width:fit-content;max-width:250px;',
+        'font:12px/1.4 system-ui,-apple-system,sans-serif;',
         'animation:es-fadeIn .15s ease-out}',
-      '[data-es=toolbar] .es-toolbar-row{display:flex;align-items:center;gap:8px}',
-      '[data-es=toolbar] .es-toolbar-title{font:600 12px/1 system-ui,-apple-system,sans-serif;color:#e8e8e8;white-space:nowrap}',
-      '[data-es=toolbar] .es-toolbar-desc{font:11px/1.35 system-ui,-apple-system,sans-serif;',
-        'color:#777;margin:6px 0 10px}',
+      '.es-toolbar-row{display:flex;align-items:center;gap:8px}',
+      '.es-toolbar-title{font:600 12px/1 system-ui,-apple-system,sans-serif;color:#e8e8e8;white-space:nowrap}',
+      '.es-toolbar-desc{font:11px/1.35 system-ui,-apple-system,sans-serif;',
+        'color:#777;margin:6px 0 4px}',
+      '.es-toolbar-status{font:11px/1.35 system-ui,-apple-system,sans-serif;',
+        'color:#666;margin:0 0 10px;min-height:14px}',
+      '.es-toolbar-status .es-dot{display:inline-block;width:7px;height:7px;',
+        'border-radius:50%;margin-right:5px;background:#555;vertical-align:middle}',
+      '.es-toolbar-status.es-live .es-dot{background:#1a7f4b}',
+      '.es-toolbar-status.es-busy .es-dot{background:#f5a623;',
+        'animation:es-pulse 1.2s ease-in-out infinite}',
+      '[data-es=panel]{margin:0 0 10px;max-height:220px;overflow-y:auto;',
+        'border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;display:none}',
+      '[data-es=panel].es-open{display:block}',
+      '.es-item{display:flex;gap:7px;align-items:flex-start;',
+        'padding:5px 4px;border-radius:6px;cursor:pointer;',
+        'font:12px/1.4 system-ui,-apple-system,sans-serif;color:#ccc}',
+      '.es-item:hover{background:rgba(255,255,255,0.05)}',
+      '.es-item .es-item-dot{flex-shrink:0;width:8px;height:8px;',
+        'border-radius:50%;margin-top:4px;background:#ff3b30}',
+      '.es-item.es-working .es-item-dot{background:#f5a623}',
+      '.es-item.es-fixed .es-item-dot{background:#1a7f4b}',
+      '.es-item .es-item-body{min-width:0}',
+      '.es-item .es-item-note{white-space:nowrap;overflow:hidden;',
+        'text-overflow:ellipsis;max-width:170px}',
+      '.es-item.es-fixed .es-item-note{color:#777;text-decoration:line-through}',
+      '.es-item .es-item-summary{font-size:11px;color:#7fd6a4;',
+        'white-space:normal;margin-top:1px}',
+      '.es-panel-toggle{background:none;border:none;color:#888;',
+        'font:11px system-ui,-apple-system,sans-serif;cursor:pointer;padding:0;margin:0 0 8px;',
+        'text-align:left;width:auto;display:block}',
+      '.es-panel-toggle:hover{color:#ccc}',
       '',
-      '[data-es=toolbar] .es-switch{position:relative;width:36px;height:20px;cursor:pointer;flex-shrink:0}',
-      '[data-es=toolbar] .es-switch input{opacity:0;width:0;height:0}',
-      '[data-es=toolbar] .es-switch .es-slider{position:absolute;inset:0;',
+      '.es-switch{position:relative;width:36px;height:20px;cursor:pointer;flex-shrink:0}',
+      '.es-switch input{opacity:0;width:0;height:0}',
+      '.es-switch .es-slider{position:absolute;inset:0;',
         'background:#333;border-radius:20px;transition:all .2s ease}',
-      '[data-es=toolbar] .es-switch .es-slider:before{content:"";position:absolute;',
+      '.es-switch .es-slider:before{content:"";position:absolute;',
         'width:16px;height:16px;border-radius:50%;left:2px;top:2px;',
         'background:#888;transition:all .2s ease}',
-      '[data-es=toolbar] .es-switch input:checked+.es-slider{background:#1a7f4b}',
-      '[data-es=toolbar] .es-switch input:checked+.es-slider:before{transform:translateX(16px);background:#fff}',
+      '.es-switch input:checked+.es-slider{background:#1a7f4b}',
+      '.es-switch input:checked+.es-slider:before{transform:translateX(16px);background:#fff}',
       '',
-      '[data-es=toolbar] .es-toolbar-foot{margin-top:2px}',
+      '.es-toolbar-foot{margin-top:2px}',
       '[data-es=dispatch]{border:none;border-radius:7px;cursor:pointer;width:100%;',
         'font:600 12px/1 system-ui,-apple-system,sans-serif;',
         'color:#fff;background:#ff3b30;',
@@ -131,40 +171,28 @@ const overlayJS = `
       '[data-es=dispatch]:disabled{background:#2a2a2a;color:#555;cursor:default}',
       '[data-es=dispatch].es-green{background:#1a7f4b}',
       '',
-      '[data-es=badge]{position:absolute;top:-8px;right:-8px;',
-        'width:22px;height:22px;border-radius:50%;',
-        'background:#ff3b30;color:#fff;',
-        'display:flex;alignItems:center;justifyContent:center;',
-        'font:700 11px/1 system-ui,-apple-system,sans-serif;',
-        'cursor:pointer;z-index:2147483640;',
-        'box-shadow:0 2px 8px rgba(0,0,0,.35);',
-        'border:2px solid rgba(0,0,0,0.2);',
-        'animation:es-scaleIn .2s ease-out;',
-        'transition:all .15s ease;userSelect:none}',
-      '[data-es=badge]:hover{transform:scale(1.2);animation:es-glow 1.5s ease-in-out infinite}',
-      '',
       '[data-es=popover]{position:fixed;z-index:2147483645;',
         'background:#1e1e1e;color:#e0e0e0;',
-        'padding:12px 16px;border-radius:10px;maxWidth:340px;minWidth:220px;',
+        'padding:12px 16px;border-radius:10px;max-width:340px;min-width:220px;',
         'font:13px/1.5 system-ui,-apple-system,sans-serif;',
         'box-shadow:0 12px 40px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,0.06);',
         'backdrop-filter:blur(8px);',
         'animation:es-fadeIn .15s ease-out}',
-      '[data-es=popover] .es-pop-note{margin-bottom:8px;white-space:pre-wrap;word-break:break-word;',
+      '.es-pop-note{margin-bottom:8px;white-space:pre-wrap;word-break:break-word;',
         'color:#e8e8e8}',
-      '[data-es=popover] .es-pop-meta{font-size:11px;color:#666;margin-bottom:8px}',
-      '[data-es=popover] .es-pop-agent{font-size:12px;color:#7fd6a4;margin-bottom:8px}',
-      '[data-es=popover] .es-pop-actions{display:flex;gap:6px;justifyContent:flex-end}',
+      '.es-pop-meta{font-size:11px;color:#666;margin-bottom:8px}',
+      '.es-pop-agent{font-size:12px;color:#7fd6a4;margin-bottom:8px}',
+      '.es-pop-actions{display:flex;gap:6px;justify-content:flex-end}',
       '',
-      '[data-es=popover] .es-btn{padding:5px 12px;font-size:12px;border-radius:5px;',
+      '.es-btn{padding:5px 12px;font-size:12px;border-radius:5px;',
         'cursor:pointer;border:none;font:600 12px/1 system-ui,-apple-system,sans-serif;',
         'transition:all .15s ease}',
-      '[data-es=popover] .es-btn:hover{filter:brightness(1.15)}',
-      '[data-es=popover] .es-btn-edit{background:#2a2a2a;color:#bbb;border:1px solid #444}',
-      '[data-es=popover] .es-btn-del{background:#3a1a1a;color:#e57373;border:1px solid #5a2a2a}',
-      '[data-es=popover] .es-btn-cancel{background:#2a2a2a;color:#bbb;border:1px solid #444}',
-      '[data-es=popover] .es-btn-confirm{background:#c62828;color:#fff}',
-      '[data-es=popover] .es-btn-save{background:#1a7f4b;color:#fff}',
+      '.es-btn:hover{filter:brightness(1.15)}',
+      '.es-btn-edit{background:#2a2a2a;color:#bbb;border:1px solid #444}',
+      '.es-btn-del{background:#3a1a1a;color:#e57373;border:1px solid #5a2a2a}',
+      '.es-btn-cancel{background:#2a2a2a;color:#bbb;border:1px solid #444}',
+      '.es-btn-confirm{background:#c62828;color:#fff}',
+      '.es-btn-save{background:#1a7f4b;color:#fff}',
       '',
       '[data-es=inline]{position:fixed;z-index:2147483647;',
         'background:#1e1e1e;color:#e0e0e0;',
@@ -173,7 +201,7 @@ const overlayJS = `
         'box-shadow:0 12px 40px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,0.06);',
         'backdrop-filter:blur(8px);',
         'animation:es-fadeIn .15s ease-out}',
-      '[data-es=inline] .es-inline-hint{font-size:11px;color:#666;margin-bottom:8px;',
+      '.es-inline-hint{font-size:11px;color:#666;margin-bottom:8px;',
         'white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '[data-es=inline] textarea{width:100%;box-sizing:border-box;',
         'font:13px/1.5 system-ui,-apple-system,sans-serif;',
@@ -182,10 +210,43 @@ const overlayJS = `
         'outline:none;transition:border-color .15s ease}',
       '[data-es=inline] textarea:focus{border-color:#ff3b30}',
       '[data-es=inline] textarea::placeholder{color:#555}',
-      '[data-es=inline] .es-inline-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}',
-      '[data-es=inline] .es-inline-shortcut{font-size:10px;color:#555;margin-top:6px;text-align:right}'
+      '.es-inline-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}',
+      '.es-inline-shortcut{font-size:10px;color:#555;margin-top:6px;text-align:right}'
     ].join('');
-    document.head.appendChild(s);
+    root.appendChild(st);
+  }
+
+  function injectLightStyles(){
+    if(document.getElementById('es-css-light'))return;
+    var st=document.createElement('style');st.id='es-css-light';
+    st.textContent=[
+      '@keyframes es-scaleIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}',
+      '@keyframes es-flash{0%,100%{outline:2px solid transparent}',
+        '50%{outline:3px solid rgba(255,59,48,0.8)}}',
+      '[data-es=badge]{position:absolute;top:-9px;right:-9px;',
+        'min-width:20px;height:20px;border-radius:999px;padding:0 5px;',
+        'background:#e5484d;color:#fff;',
+        'display:flex;align-items:center;justify-content:center;',
+        'font:650 10.5px/1 system-ui,-apple-system,sans-serif;',
+        'cursor:pointer;z-index:2147483640;',
+        'box-shadow:0 1px 2px rgba(0,0,0,.25),0 4px 12px -2px rgba(0,0,0,.3);',
+        'border:1.5px solid rgba(255,255,255,.9);',
+        'animation:es-scaleIn .2s ease-out;',
+        'transition:transform .15s ease,box-shadow .15s ease;user-select:none}',
+      '[data-es=badge]:hover{transform:scale(1.15)}',
+      '[data-es=badge][data-es-state=working]{background:#f5a623}',
+      '[data-es=badge][data-es-state=fixed]{background:#2f9e68}',
+      '[data-es-marked]{outline:1.5px solid rgba(229,72,77,.35)!important;',
+        'outline-offset:3px;border-radius:3px;',
+        'transition:outline-color .18s ease,outline-offset .18s ease}',
+      '[data-es-marked=working]{outline-color:rgba(245,166,35,.4)!important}',
+      '[data-es-marked=fixed]{outline-color:rgba(47,158,104,.4)!important}',
+      '[data-es-marked]:hover{outline-width:2.5px;outline-offset:2px;',
+        'outline-color:rgba(229,72,77,.9)!important}',
+      '[data-es-marked=working]:hover{outline-color:rgba(245,166,35,.95)!important}',
+      '[data-es-marked=fixed]:hover{outline-color:rgba(47,158,104,.95)!important}'
+    ].join('');
+    document.head.appendChild(st);
   }
 
   // ── persistence ────────────────────────────────────────────
@@ -200,16 +261,22 @@ const overlayJS = `
   }
 
   // ── DOM scaffold ───────────────────────────────────────────
-  var hi=null,toolbar=null,toggleInput=null,dispatchBtn=null;
+  var host=null,root=null,hi=null,toolbar=null,toggleInput=null,dispatchBtn=null;
 
   function ensure(){
     if(!document.body)return;
-    injectStyles();
-    if(!hi||!document.body.contains(hi)){
-      hi=document.createElement('div');hi.setAttribute('data-es','hi');
-      document.body.appendChild(hi);
+    if(!host||!document.body.contains(host)){
+      host=document.createElement('div');host.setAttribute('data-es-root','');
+      root=host.attachShadow({mode:'open'});
+      document.body.appendChild(host);
     }
-    if(!toolbar||!document.body.contains(toolbar)){
+    injectShadowStyles();
+    injectLightStyles();
+    if(!hi||!root.contains(hi)){
+      hi=document.createElement('div');hi.setAttribute('data-es','hi');
+      root.appendChild(hi);
+    }
+    if(!toolbar||!root.contains(toolbar)){
       toolbar=document.createElement('div');toolbar.setAttribute('data-es','toolbar');
 
       var row=document.createElement('div');row.className='es-toolbar-row';
@@ -225,16 +292,92 @@ const overlayJS = `
       var desc=document.createElement('div');desc.className='es-toolbar-desc';
       desc.innerHTML='Click elements to annotate.';
 
+      var status=document.createElement('div');status.className='es-toolbar-status';
+      status.setAttribute('data-es','status');
+
+      var panelToggle=document.createElement('button');panelToggle.className='es-panel-toggle';
+      panelToggle.setAttribute('data-es','panel-toggle');
+      panelToggle.textContent='\u25b8 notes';
+      panelToggle.addEventListener('click',function(ev){
+        ev.preventDefault();ev.stopPropagation();
+        var pn=root.querySelector('[data-es=panel]');if(!pn)return;
+        var open=pn.className.indexOf('es-open')<0;
+        pn.className=open?'es-open':'';pn.setAttribute('data-es','panel');
+        panelToggle.textContent=(open?'\u25be':'\u25b8')+' notes';
+        if(open)renderPanel();
+      },true);
+
+      var panel=document.createElement('div');panel.setAttribute('data-es','panel');
+
       var foot=document.createElement('div');foot.className='es-toolbar-foot';
       dispatchBtn=document.createElement('button');dispatchBtn.setAttribute('data-es','dispatch');
       dispatchBtn.disabled=true;
       dispatchBtn.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();dispatch();},true);
       foot.appendChild(dispatchBtn);
 
-      toolbar.appendChild(row);toolbar.appendChild(desc);toolbar.appendChild(foot);
-      document.body.appendChild(toolbar);
+      toolbar.appendChild(row);toolbar.appendChild(desc);toolbar.appendChild(status);
+      toolbar.appendChild(panelToggle);toolbar.appendChild(panel);toolbar.appendChild(foot);
+      root.appendChild(toolbar);
     }
     applyEnabled();
+  }
+
+  // ── agent status line ──────────────────────────────────────
+  var sseLive=false;
+  function renderStatus(){
+    var st=root?root.querySelector('[data-es=status]'):null;if(!st)return;
+    var working=0,fixed=0;
+    notes.forEach(function(n){
+      if(n.agentStatus==='working')working++;
+      if(n.agentStatus==='fixed')fixed++;
+    });
+    if(working>0){st.className='es-toolbar-status es-busy';
+      st.innerHTML='<span class="es-dot"></span>agent working ('+working+')';}
+    else if(fixed>0&&fixed===notes.length&&notes.length>0){st.className='es-toolbar-status es-live';
+      st.innerHTML='<span class="es-dot"></span>all '+fixed+' fixed';}
+    else if(sseLive){st.className='es-toolbar-status es-live';
+      st.innerHTML='<span class="es-dot"></span>listening'+(fixed>0?' \u00b7 '+fixed+' fixed':'');}
+    else if(proxyMode){st.className='es-toolbar-status';
+      st.innerHTML='<span class="es-dot"></span>connecting\u2026';}
+    else{st.className='es-toolbar-status';
+      st.innerHTML='<span class="es-dot"></span>screenshots on dispatch';}
+  }
+
+  // ── notes panel ────────────────────────────────────────────
+  function renderPanel(){
+    var pn=root?root.querySelector('[data-es=panel]'):null;if(!pn)return;
+    var tg=root.querySelector('[data-es=panel-toggle]');
+    if(tg)tg.textContent=(pn.className.indexOf('es-open')>=0?'\u25be':'\u25b8')+' notes ('+notes.length+')';
+    if(pn.className.indexOf('es-open')<0)return;
+    pn.innerHTML='';
+    if(notes.length===0){
+      pn.innerHTML='<div class="es-item"><div class="es-item-body es-item-note" style="color:#666">no annotations yet</div></div>';
+      return;
+    }
+    notes.forEach(function(n,i){
+      var it=document.createElement('div');
+      it.className='es-item'+(n.agentStatus==='working'?' es-working':(n.fixedAt?' es-fixed':''));
+      var dot=document.createElement('div');dot.className='es-item-dot';
+      var body=document.createElement('div');body.className='es-item-body';
+      var txt=document.createElement('div');txt.className='es-item-note';
+      txt.textContent=(i+1)+'. '+n.note;txt.title=n.note+'\n'+n.selector;
+      body.appendChild(txt);
+      if(n.agentSummary){
+        var sm=document.createElement('div');sm.className='es-item-summary';
+        sm.textContent='\u2713 '+n.agentSummary;body.appendChild(sm);
+      }
+      it.appendChild(dot);it.appendChild(body);
+      it.addEventListener('click',function(ev){
+        ev.stopPropagation();
+        try{
+          var el=document.querySelector(n.selector);if(!el)return;
+          el.scrollIntoView({behavior:'smooth',block:'center'});
+          el.style.animation='es-flash 0.6s ease 3';
+          setTimeout(function(){el.style.animation='';},2000);
+        }catch(_){}
+      },true);
+      pn.appendChild(it);
+    });
   }
 
   // ── toggle ─────────────────────────────────────────────────
@@ -242,34 +385,63 @@ const overlayJS = `
     enabled=!enabled;save();applyEnabled();
     if(window.esToggle)window.esToggle(enabled?'on':'off');
   }
+  function anyWorking(){
+    for(var i=0;i<notes.length;i++){if(notes[i].agentStatus==='working')return true;}
+    return false;
+  }
   function applyEnabled(){
     if(toggleInput)toggleInput.checked=enabled;
     if(dispatchBtn){
       var c=countEdited();
       var hasNotes=notes.length>0;
-      dispatchBtn.textContent=enabled?('Dispatch ('+c+')'):'Dispatch';
-      dispatchBtn.disabled=!enabled||!hasNotes;
-      dispatchBtn.className=c>0&&enabled?'es-green':'';
+      if(anyWorking()){
+        // mid-fix dispatches would collide with the agent's edits
+        dispatchBtn.textContent='agent working\u2026';
+        dispatchBtn.disabled=true;
+        dispatchBtn.className='';
+      }else{
+        dispatchBtn.textContent=enabled?('Dispatch ('+c+')'):'Dispatch';
+        dispatchBtn.disabled=!enabled||!hasNotes;
+        dispatchBtn.className=c>0&&enabled?'es-green':'';
+      }
     }
     if(hi)hi.style.display='none';
-    renderBadges();
+    renderBadges();renderStatus();renderPanel();
   }
 
   // ── badges ─────────────────────────────────────────────────
+  // Repaint in place: recreating badge nodes every ensure() tick replays
+  // the scale-in animation and the whole overlay appears to blink.
   function renderBadges(){
-    document.querySelectorAll('[data-es=badge]').forEach(function(b){b.remove();});
+    var keep={};
+    if(enabled)notes.forEach(function(n){keep[n.id]=true;});
+    document.querySelectorAll('[data-es=badge]').forEach(function(b){
+      if(!keep[b.getAttribute('data-es-id')])b.remove();
+    });
+    document.querySelectorAll('[data-es-marked]').forEach(function(el){
+      var has=false,bs=el.querySelectorAll('[data-es=badge]');
+      for(var j=0;j<bs.length;j++){if(keep[bs[j].getAttribute('data-es-id')]){has=true;break;}}
+      if(!has)el.removeAttribute('data-es-marked');
+    });
     if(!enabled)return;
     notes.forEach(function(n,i){
       try{
         var el=document.querySelector(n.selector);if(!el)return;
-        if(!el.style.position||el.style.position==='static')el.style.position='relative';
-        var badge=document.createElement('div');badge.setAttribute('data-es','badge');
+        var badge=null,curr=el.querySelectorAll('[data-es=badge]');
+        for(var j=0;j<curr.length;j++){if(curr[j].getAttribute('data-es-id')===n.id){badge=curr[j];break;}}
+        if(!badge){
+          if(!el.style.position||el.style.position==='static')el.style.position='relative';
+          badge=document.createElement('div');badge.setAttribute('data-es','badge');
+          badge.setAttribute('data-es-id',n.id);
+          badge.addEventListener('mouseenter',function(ev){ev.stopPropagation();showPopover(el,badge.__esNote);},true);
+          badge.addEventListener('mouseleave',function(){scheduleHidePopover();},true);
+          el.appendChild(badge);
+        }
+        var state=n.agentStatus==='working'?'working':(n.fixedAt?'fixed':'pending');
+        badge.__esNote=n;
         badge.textContent=String(i+1);
-        if(n.agentStatus==='working')badge.style.background='#f5a623';
-        if(n.agentStatus==='fixed')badge.style.background='#1a7f4b';
-        badge.addEventListener('mouseenter',function(ev){ev.stopPropagation();showPopover(el,n);},true);
-        badge.addEventListener('mouseleave',function(){scheduleHidePopover();},true);
-        el.appendChild(badge);
+        badge.setAttribute('data-es-state',state);
+        el.setAttribute('data-es-marked',state);
       }catch(_){}
     });
   }
@@ -291,12 +463,12 @@ const overlayJS = `
       '<div class="es-pop-meta">'+esc(note.selector)+'</div>'+
       '<div class="es-pop-actions">'+
       '<button data-es="pop-edit" class="es-btn es-btn-edit">Edit</button>'+
-      '<button data-es="pop-del" class="es-btn es-btn-del">Delete</button></div>';
+      '<button data-es="pop-del" class="es-btn es-btn-del">Close</button></div>';
     pop.addEventListener('mouseenter',function(){clearTimeout(popTimer);},true);
     pop.addEventListener('mouseleave',function(){scheduleHidePopover();},true);
     pop.querySelector('[data-es=pop-edit]').addEventListener('click',function(ev){ev.stopPropagation();hidePopover();openInlineEdit(el,note);},true);
     pop.querySelector('[data-es=pop-del]').addEventListener('click',function(ev){ev.stopPropagation();confirmDelete(el,note,pop);},true);
-    document.body.appendChild(pop);popEl=pop;
+    root.appendChild(pop);popEl=pop;
   }
   function hidePopover(){if(popEl){popEl.remove();popEl=null;}}
   function scheduleHidePopover(){popTimer=setTimeout(hidePopover,250);}
@@ -338,7 +510,7 @@ const overlayJS = `
       '<button data-es="cancel" class="es-btn es-btn-cancel">Cancel</button>'+
       '<button data-es="add" class="es-btn es-btn-save">Add</button></div>'+
       '<div class="es-inline-shortcut">\u2318\u21E7\u23CE to save \u00b7 Esc to cancel</div>';
-    document.body.appendChild(card);
+    root.appendChild(card);
     var input=card.querySelector('[data-es=in]');input.focus();
     var close=function(){card.remove();dialogOpen=false;};
     card.querySelector('[data-es=cancel]').addEventListener('click',function(ev){ev.stopPropagation();close();},true);
@@ -367,7 +539,7 @@ const overlayJS = `
       '<button data-es="cancel" class="es-btn es-btn-cancel">Cancel</button>'+
       '<button data-es="save" class="es-btn es-btn-save">Save</button></div>'+
       '<div class="es-inline-shortcut">\u2318\u21E7\u23CE to save \u00b7 Esc to cancel</div>';
-    document.body.appendChild(card);
+    root.appendChild(card);
     var input=card.querySelector('[data-es=in]');input.focus();input.select();
     var close=function(){card.remove();dialogOpen=false;};
     card.querySelector('[data-es=cancel]').addEventListener('click',function(ev){ev.stopPropagation();close();},true);
@@ -389,7 +561,7 @@ const overlayJS = `
 
   // ── dispatch ───────────────────────────────────────────────
   function dispatch(){
-    if(!enabled||notes.length===0)return;
+    if(!enabled||notes.length===0||anyWorking())return;
     var edited=notes.filter(function(n){return n.dispatchedAt===0||n.editedAt>n.dispatchedAt;});
     if(edited.length===0){
       if(dispatchBtn){dispatchBtn.textContent='Nothing new';

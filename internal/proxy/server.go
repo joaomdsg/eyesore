@@ -104,6 +104,18 @@ func NewServer(target *url.URL, st *store.Store, overlay []byte, poll time.Durat
 		s.broadcast(event{name: "reload", data: "{}"})
 		w.WriteHeader(http.StatusNoContent)
 	})
+	s.mux.HandleFunc("GET /__eyesore/notes", func(w http.ResponseWriter, r *http.Request) {
+		all, err := s.store.Load()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if all == nil {
+			all = []notes.Note{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(all)
+	})
 	s.mux.HandleFunc("GET /__eyesore/events", s.handleEvents)
 	s.mux.Handle("/", rp)
 
@@ -115,6 +127,11 @@ func NewServer(target *url.URL, st *store.Store, overlay []byte, poll time.Durat
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+
+// Reload tells every connected overlay tab to refresh. It is the in-process
+// equivalent of a POST to /__eyesore/reload, letting an embedding process skip
+// the HTTP round-trip (and its unsynchronized reload-URL config).
+func (s *Server) Reload() { s.broadcast(event{name: "reload", data: "{}"}) }
 
 // Close stops the store watcher and waits for in-flight screenshot captures.
 // Safe to call from concurrent shutdown paths.
