@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/browser"
+	"github.com/joaomdsg/isore/internal/browser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,7 @@ func TestDriverGivesTheAgentEyesAndHands(t *testing.T) {
 
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<html><body><h1 id="title">hello eyesore</h1>` +
+		w.Write([]byte(`<html><body><h1 id="title">hello isore</h1>` +
 			`<script>console.log("booted", 42)</script></body></html>`))
 	}))
 	t.Cleanup(page.Close)
@@ -40,7 +40,7 @@ func TestDriverGivesTheAgentEyesAndHands(t *testing.T) {
 
 	html, err := d.HTML("#title")
 	require.NoError(t, err)
-	assert.Contains(t, html, "hello eyesore")
+	assert.Contains(t, html, "hello isore")
 
 	png, err := d.Screenshot("#title")
 	require.NoError(t, err)

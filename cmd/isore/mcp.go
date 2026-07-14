@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/proxy"
-	"github.com/joaomdsg/eyesore/internal/serve"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/proxy"
+	"github.com/joaomdsg/isore/internal/serve"
+	"github.com/joaomdsg/isore/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -108,7 +108,7 @@ type markWorkingIn struct {
 }
 
 type startProxyIn struct {
-	TargetPort int `json:"targetPort,omitempty" jsonschema:"port your running dev server listens on and that eyesore will annotate; default 3000"`
+	TargetPort int `json:"targetPort,omitempty" jsonschema:"port your running dev server listens on and that isore will annotate; default 3000"`
 	ProxyPort  int `json:"proxyPort,omitempty" jsonschema:"port to serve the annotated app on; default 4400"`
 }
 
@@ -127,9 +127,27 @@ type markFixedOut struct {
 	Fixed string `json:"fixed"`
 }
 
+// instructions is surfaced to the connecting model on initialize. It describes
+// the hands-off background loop the harness should run: one worker per dispatch
+// cycle, chained so the foreground conversation never blocks.
+const instructions = `Isore turns a user's live browser annotations into coding tasks. The user clicks an element in their running web app, writes a note about what to change, and hits Dispatch. You fix the code and their page updates live: badges turn amber while you work, green with your summary when done, and the page reloads after a rebuild.
+
+Run isore as a hands-off background loop so the foreground conversation is never blocked. Use ONE background worker per dispatch cycle: each worker handles a single dispatch, then hands off to a fresh worker. Chaining workers (rather than one worker looping forever) keeps each worker's context small.
+
+1. SETUP (foreground, once): call start_proxy(targetPort, proxyPort). targetPort is the user's dev-server port; proxyPort is where the annotated app is served (defaults 3000 and 4400). It opens the user's browser to the overlay. Then launch the first background worker and return control to the user — do not block on listening.
+
+2. EACH BACKGROUND WORKER handles one dispatch cycle:
+   a. First worker only: call list_notes and act (step c) on anything already pending.
+   b. LISTEN: call await_notes(sinceMs). It blocks until the user dispatches, or returns empty on timeout; on empty, call it again to keep listening. Pass sinceMs=0 on the first-ever call (means "anything from now on"); otherwise pass the largest dispatchedAt you have already handled, so you never reprocess a batch.
+   c. ACT on the returned batch (all notes from one Dispatch). For each note: call mark_working(id) first (badge turns amber so the user sees you picked it up); get_screenshot(id) to see exactly what the user saw at dispatch; use the note's note/selector/label/url to make the code change; verify against the live page with browser_screenshot / browser_eval / browser_html if useful; then mark_fixed(id, summary) with a short, user-facing summary (badge turns green and the summary shows in the overlay).
+   d. When the whole batch is fixed and the app has rebuilt, call reload_page once so the user's tabs refresh.
+   e. HAND OFF: launch a fresh background worker for the next cycle, passing it the updated sinceMs checkpoint (the largest dispatchedAt you handled), then finish. The new worker resumes at step b.
+
+Notes: the store is safe under concurrent mark_working/mark_fixed calls. reload_page works only after start_proxy has been called. Keep summaries short — the user reads them in the overlay.`
+
 func runMCP(args []string) error {
-	fs := flag.NewFlagSet("eyesore mcp", flag.ExitOnError)
-	out := fs.String("out", "eyesore-out/notes.json", "notes store shared with the harness")
+	fs := flag.NewFlagSet("isore mcp", flag.ExitOnError)
+	out := fs.String("out", "isore-out/notes.json", "notes store shared with the harness")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -139,10 +157,10 @@ func runMCP(args []string) error {
 	})
 
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "eyesore",
-		Title:   "Eyesore UI annotations",
+		Name:    "isore",
+		Title:   "Isore UI annotations",
 		Version: "0.1.0",
-	}, nil)
+	}, &mcp.ServerOptions{Instructions: instructions})
 
 	holder := &proxyHolder{}
 	// Dedicated pool + mutex so dispatch-time element captures never interleave
@@ -164,7 +182,7 @@ func runMCP(args []string) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_notes",
-		Description: "List pending UI annotations the user dispatched from the eyesore overlay: what to change, on which element (CSS selector). ALWAYS call get_screenshot for each note to see what the user saw, then fix and call mark_fixed.",
+		Description: "List pending UI annotations the user dispatched from the isore overlay: what to change, on which element (CSS selector). ALWAYS call get_screenshot for each note to see what the user saw, then fix and call mark_fixed.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listIn) (*mcp.CallToolResult, notesOut, error) {
 		ns, err := h.ListNotes(ctx)
 		return nil, notesOut{Notes: ns}, err
@@ -172,7 +190,7 @@ func runMCP(args []string) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "await_notes",
-		Description: "Block until the user dispatches new annotations from the eyesore overlay, then return them. Empty result means the wait timed out — call again to keep listening.",
+		Description: "Block until the user dispatches new annotations from the isore overlay, then return them. Empty result means the wait timed out — call again to keep listening.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in awaitIn) (*mcp.CallToolResult, notesOut, error) {
 		timeout := 120 * time.Second
 		if in.TimeoutSeconds > 0 {
@@ -206,7 +224,7 @@ func runMCP(args []string) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "start_proxy",
-		Description: "Start eyesore in proxy mode: run a reverse proxy that injects the annotation overlay in front of the user's dev server, and open their browser to it. Pass the port your dev server listens on (targetPort) and the port to serve the annotated app on (proxyPort). Calling again restarts the proxy on the new ports. After it returns, call await_notes to receive the user's annotations.",
+		Description: "Start isore in proxy mode: run a reverse proxy that injects the annotation overlay in front of the user's dev server, and open their browser to it. Pass the port your dev server listens on (targetPort) and the port to serve the annotated app on (proxyPort). Calling again restarts the proxy on the new ports. After it returns, call await_notes to receive the user's annotations.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in startProxyIn) (*mcp.CallToolResult, startProxyOut, error) {
 		targetPort := in.TargetPort
 		if targetPort == 0 {
@@ -244,6 +262,6 @@ func runMCP(args []string) error {
 
 	addBrowserTools(server, h, &driverPool{outDir: filepath.Dir(*out)})
 
-	fmt.Fprintf(os.Stderr, "eyesore mcp: serving stdio, store %s\n", *out)
+	fmt.Fprintf(os.Stderr, "isore mcp: serving stdio, store %s\n", *out)
 	return server.Run(context.Background(), &mcp.StdioTransport{})
 }

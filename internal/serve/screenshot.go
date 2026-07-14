@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
+	"github.com/joaomdsg/isore/internal/notes"
 )
 
 // Screenshot returns the element PNG captured for a dispatched note. The id

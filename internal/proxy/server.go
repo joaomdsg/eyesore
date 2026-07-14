@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/notes"
+	"github.com/joaomdsg/isore/internal/store"
 )
 
 const maxDispatchBytes = 4 << 20
@@ -52,7 +52,7 @@ type Server struct {
 }
 
 // NewServer proxies to target, injecting the overlay into HTML and serving the
-// /__eyesore/ control endpoints. A watcher polls the store every poll interval
+// /__isore/ control endpoints. A watcher polls the store every poll interval
 // and pushes note changes to SSE subscribers; Close stops it.
 func NewServer(target *url.URL, st *store.Store, overlay []byte, poll time.Duration, opts ...Option) *Server {
 	s := &Server{
@@ -95,16 +95,16 @@ func NewServer(target *url.URL, st *store.Store, overlay []byte, poll time.Durat
 		return nil
 	}
 
-	s.mux.HandleFunc("GET /__eyesore/overlay.js", func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("GET /__isore/overlay.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Write(s.overlay)
 	})
-	s.mux.HandleFunc("POST /__eyesore/dispatch", s.handleDispatch)
-	s.mux.HandleFunc("POST /__eyesore/reload", func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("POST /__isore/dispatch", s.handleDispatch)
+	s.mux.HandleFunc("POST /__isore/reload", func(w http.ResponseWriter, r *http.Request) {
 		s.broadcast(event{name: "reload", data: "{}"})
 		w.WriteHeader(http.StatusNoContent)
 	})
-	s.mux.HandleFunc("GET /__eyesore/notes", func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("GET /__isore/notes", func(w http.ResponseWriter, r *http.Request) {
 		all, err := s.store.Load()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -116,7 +116,7 @@ func NewServer(target *url.URL, st *store.Store, overlay []byte, poll time.Durat
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(all)
 	})
-	s.mux.HandleFunc("GET /__eyesore/events", s.handleEvents)
+	s.mux.HandleFunc("GET /__isore/events", s.handleEvents)
 	s.mux.Handle("/", rp)
 
 	for _, opt := range opts {
@@ -129,7 +129,7 @@ func NewServer(target *url.URL, st *store.Store, overlay []byte, poll time.Durat
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
 // Reload tells every connected overlay tab to refresh. It is the in-process
-// equivalent of a POST to /__eyesore/reload, letting an embedding process skip
+// equivalent of a POST to /__isore/reload, letting an embedding process skip
 // the HTTP round-trip (and its unsynchronized reload-URL config).
 func (s *Server) Reload() { s.broadcast(event{name: "reload", data: "{}"}) }
 

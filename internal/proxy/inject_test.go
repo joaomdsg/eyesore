@@ -3,11 +3,11 @@ package proxy_test
 import (
 	"testing"
 
-	"github.com/joaomdsg/eyesore/internal/proxy"
+	"github.com/joaomdsg/isore/internal/proxy"
 	"github.com/stretchr/testify/assert"
 )
 
-const tag = `<script src="/__eyesore/overlay.js"></script>`
+const tag = `<script src="/__isore/overlay.js"></script>`
 
 func TestOverlayLandsInsideTheDocumentSoItRunsOnEveryPage(t *testing.T) {
 	t.Parallel()

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joaomdsg/eyesore/internal/browser"
+	"github.com/joaomdsg/isore/internal/browser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
+	"github.com/joaomdsg/isore/internal/notes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

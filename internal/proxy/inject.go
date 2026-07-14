@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const overlayTag = `<script src="/__eyesore/overlay.js"></script>`
+const overlayTag = `<script src="/__isore/overlay.js"></script>`
 
 // InjectOverlay plants the overlay script tag before the last </body> of an
 // HTML document (appending when none exists). Non-HTML bodies pass through

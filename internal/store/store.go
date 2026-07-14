@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
+	"github.com/joaomdsg/isore/internal/notes"
 )
 
 // Store is a file-backed note store. Every operation re-reads the file, so

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
-	"github.com/joaomdsg/eyesore/internal/serve"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/notes"
+	"github.com/joaomdsg/isore/internal/serve"
+	"github.com/joaomdsg/isore/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

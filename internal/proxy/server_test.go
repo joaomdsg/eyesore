@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
-	"github.com/joaomdsg/eyesore/internal/proxy"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/notes"
+	"github.com/joaomdsg/isore/internal/proxy"
+	"github.com/joaomdsg/isore/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const overlayJS = "/*eyesore overlay*/ console.log('__eyesore');"
+const overlayJS = "/*isore overlay*/ console.log('__isore');"
 
-// start wires app -> eyesore proxy -> test client around a fresh store.
+// start wires app -> isore proxy -> test client around a fresh store.
 func start(t *testing.T, app http.Handler) (base string, st *store.Store) {
 	t.Helper()
 	st = store.New(filepath.Join(t.TempDir(), "notes.json"))
@@ -67,7 +67,7 @@ func TestUsersSeeTheirAppWithTheOverlayPlantedIn(t *testing.T) {
 	code, _, body := get(t, base+"/")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Contains(t, body, "<h1>app</h1>", "the app itself must be intact")
-	assert.Contains(t, body, `<script src="/__eyesore/overlay.js"></script>`)
+	assert.Contains(t, body, `<script src="/__isore/overlay.js"></script>`)
 }
 
 func TestAssetsFlowThroughByteForByte(t *testing.T) {
@@ -101,7 +101,7 @@ func TestCompressionIsNegotiatedAwaySoInjectionSeesPlainHTML(t *testing.T) {
 func TestTheOverlayScriptIsServedFromTheMagicPath(t *testing.T) {
 	t.Parallel()
 	base, _ := start(t, appServing("text/html", "<body></body>"))
-	code, header, body := get(t, base+"/__eyesore/overlay.js")
+	code, header, body := get(t, base+"/__isore/overlay.js")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Contains(t, header.Get("Content-Type"), "javascript")
 	assert.Equal(t, overlayJS, body)
@@ -111,7 +111,7 @@ func TestDispatchedNotesLandInTheSharedStore(t *testing.T) {
 	t.Parallel()
 	base, st := start(t, appServing("text/html", "<body></body>"))
 	payload := `[{"id":"es_1","selector":"#x","note":"fix me","url":"/","dispatchedAt":5}]`
-	resp, err := http.Post(base+"/__eyesore/dispatch", "application/json", strings.NewReader(payload))
+	resp, err := http.Post(base+"/__isore/dispatch", "application/json", strings.NewReader(payload))
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -125,7 +125,7 @@ func TestDispatchedNotesLandInTheSharedStore(t *testing.T) {
 func TestGarbageDispatchesAreRejectedWithoutPoisoningTheStore(t *testing.T) {
 	t.Parallel()
 	base, st := start(t, appServing("text/html", "<body></body>"))
-	resp, err := http.Post(base+"/__eyesore/dispatch", "application/json", strings.NewReader("not json"))
+	resp, err := http.Post(base+"/__isore/dispatch", "application/json", strings.NewReader("not json"))
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -140,7 +140,7 @@ func sse(t *testing.T, base string) <-chan string {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/__eyesore/events", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/__isore/events", nil)
 	require.NoError(t, err)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -193,7 +193,7 @@ func TestAReloadRequestReachesEveryOpenTab(t *testing.T) {
 	tab1 := sse(t, base)
 	tab2 := sse(t, base)
 
-	resp, err := http.Post(base+"/__eyesore/reload", "", nil)
+	resp, err := http.Post(base+"/__isore/reload", "", nil)
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -260,7 +260,7 @@ func TestAFreshTabCanReadCurrentAgentStateInsteadOfWaitingForChanges(t *testing.
 	require.NoError(t, st.MarkWorking("es_1"))
 	base := startWith(t, appServing("text/html", "<body></body>"), st)
 
-	code, header, body := get(t, base+"/__eyesore/notes")
+	code, header, body := get(t, base+"/__isore/notes")
 	assert.Equal(t, http.StatusOK, code)
 	assert.Contains(t, header.Get("Content-Type"), "json")
 	assert.Contains(t, body, `"agentStatus":"working"`,
@@ -274,7 +274,7 @@ func TestASecondDispatchThroughTheProxyKeepsTheFirst(t *testing.T) {
 		`[{"id":"es_1","note":"one","dispatchedAt":5}]`,
 		`[{"id":"es_2","note":"two","dispatchedAt":6}]`,
 	} {
-		resp, err := http.Post(base+"/__eyesore/dispatch", "application/json", strings.NewReader(p))
+		resp, err := http.Post(base+"/__isore/dispatch", "application/json", strings.NewReader(p))
 		require.NoError(t, err)
 		resp.Body.Close()
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)

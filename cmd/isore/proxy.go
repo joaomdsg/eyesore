@@ -11,15 +11,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/proxy"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/proxy"
+	"github.com/joaomdsg/isore/internal/store"
 )
 
 func runProxy(args []string) error {
-	fs := flag.NewFlagSet("eyesore proxy", flag.ExitOnError)
+	fs := flag.NewFlagSet("isore proxy", flag.ExitOnError)
 	target := fs.String("url", "http://127.0.0.1:3000", "dev server to proxy")
 	listen := fs.String("listen", "127.0.0.1:4400", "address to serve the annotated app on")
-	out := fs.String("out", "eyesore-out/notes.json", "notes store shared with the MCP server")
+	out := fs.String("out", "isore-out/notes.json", "notes store shared with the MCP server")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -44,6 +44,6 @@ func runProxy(args []string) error {
 	}
 	p := proxy.NewServer(t, store.New(*out), []byte(overlayJS), 300*time.Millisecond, proxy.WithShooter(shoot))
 	defer p.Close()
-	fmt.Fprintf(os.Stderr, "eyesore proxy: browse http://%s (annotating %s), store %s\n", *listen, *target, *out)
+	fmt.Fprintf(os.Stderr, "isore proxy: browse http://%s (annotating %s), store %s\n", *listen, *target, *out)
 	return http.ListenAndServe(*listen, p)
 }

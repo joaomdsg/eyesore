@@ -37,7 +37,7 @@ const overlayJS = `
   var proxyMode=!window.esDispatch;
   function ship(json){
     if(window.esDispatch){window.esDispatch(json);return;}
-    fetch('/__eyesore/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
+    fetch('/__isore/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
   }
   function applyServerNotes(list){
     var touched=false;
@@ -58,10 +58,10 @@ const overlayJS = `
   function listen(){
     if(!proxyMode||window.__esSSE)return;
     // reconcile first: this tab may have missed changes while closed
-    fetch('/__eyesore/notes').then(function(r){return r.json();})
+    fetch('/__isore/notes').then(function(r){return r.json();})
       .then(applyServerNotes).catch(function(){});
     try{
-      var es=new EventSource('/__eyesore/events');window.__esSSE=es;
+      var es=new EventSource('/__isore/events');window.__esSSE=es;
       es.onopen=function(){sseLive=true;renderStatus();};
       es.onerror=function(){sseLive=false;renderStatus();};
       es.addEventListener('reload',function(){location.reload();});

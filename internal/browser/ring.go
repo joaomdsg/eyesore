@@ -61,7 +61,7 @@ func WriteEndpoint(path, debugURL string) error {
 func ReadEndpoint(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("no browser attached: start `eyesore` (harness) or use proxy mode, which launches its own")
+		return "", fmt.Errorf("no browser attached: start `isore` (harness) or use proxy mode, which launches its own")
 	}
 	if err != nil {
 		return "", err

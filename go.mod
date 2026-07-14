@@ -1,4 +1,4 @@
-module github.com/joaomdsg/eyesore
+module github.com/joaomdsg/isore
 
 go 1.26.3
 

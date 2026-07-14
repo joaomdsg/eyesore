@@ -87,7 +87,7 @@ func NewSince(all []Note, since int64) []Note {
 }
 
 // ScreenshotPath is where the harness saves the element screenshot for a note.
-// IDs arrive over the network via /__eyesore/dispatch, so anything outside the
+// IDs arrive over the network via /__isore/dispatch, so anything outside the
 // overlay's [a-zA-Z0-9_-] alphabet is folded away — the result can never
 // escape outDir/screenshots.
 func ScreenshotPath(outDir, id string) string {

@@ -1,4 +1,4 @@
-// Command eyesore opens a running web app in a NON-headless Chromium
+// Command isore opens a running web app in a NON-headless Chromium
 // via chromedp and injects a toggleable annotation overlay. Hover highlights the
 // element under the cursor, click opens a compact inline note input at the
 // element location, and a floating "Dispatch" button ships edited notes back to
@@ -16,9 +16,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/browser"
-	"github.com/joaomdsg/eyesore/internal/notes"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/browser"
+	"github.com/joaomdsg/isore/internal/notes"
+	"github.com/joaomdsg/isore/internal/store"
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
@@ -30,22 +30,22 @@ func main() {
 		switch os.Args[1] {
 		case "mcp":
 			if err := runMCP(os.Args[2:]); err != nil {
-				fmt.Fprintln(os.Stderr, "eyesore mcp:", err)
+				fmt.Fprintln(os.Stderr, "isore mcp:", err)
 				os.Exit(1)
 			}
 			return
 		case "proxy":
 			if err := runProxy(os.Args[2:]); err != nil {
-				fmt.Fprintln(os.Stderr, "eyesore proxy:", err)
+				fmt.Fprintln(os.Stderr, "isore proxy:", err)
 				os.Exit(1)
 			}
 			return
 		}
 	}
 	url := flag.String("url", "http://127.0.0.1:3000/", "app URL to annotate")
-	out := flag.String("out", "eyesore-out/notes.json", "dispatched notes output")
+	out := flag.String("out", "isore-out/notes.json", "dispatched notes output")
 	chrome := flag.String("chrome", "", "browser executable (default: auto-detect)")
-	debugPort := flag.String("debug-port", "9222", "CDP port exposed to `eyesore mcp` browser tools")
+	debugPort := flag.String("debug-port", "9222", "CDP port exposed to `isore mcp` browser tools")
 	flag.Parse()
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
@@ -89,7 +89,7 @@ func main() {
 		chromedp.Navigate(*url),
 		chromedp.Evaluate(overlayJS, &ready),
 	); err != nil {
-		fmt.Fprintln(os.Stderr, "eyesore run:", err)
+		fmt.Fprintln(os.Stderr, "isore run:", err)
 		os.Exit(1)
 	}
 	if err := os.MkdirAll(outDir, 0o755); err == nil {
@@ -98,7 +98,7 @@ func main() {
 			defer os.Remove(endpoint)
 		}
 	}
-	fmt.Printf("eyesore ready on %s — Ctrl-Shift-N to toggle, click elements to annotate, Dispatch to ship. Ctrl-C to quit.\n", *url)
+	fmt.Printf("isore ready on %s — Ctrl-Shift-N to toggle, click elements to annotate, Dispatch to ship. Ctrl-C to quit.\n", *url)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)

@@ -1,13 +1,13 @@
 // Package serve holds the MCP tool handlers, kept free of MCP SDK types so
-// the tool logic is testable; cmd/eyesore adapts them onto the SDK.
+// the tool logic is testable; cmd/isore adapts them onto the SDK.
 package serve
 
 import (
 	"context"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/notes"
+	"github.com/joaomdsg/isore/internal/store"
 )
 
 // NoteView is a pending note as presented to an agent.

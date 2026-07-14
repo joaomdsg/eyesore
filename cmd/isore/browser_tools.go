@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/joaomdsg/eyesore/internal/browser"
-	"github.com/joaomdsg/eyesore/internal/serve"
+	"github.com/joaomdsg/isore/internal/browser"
+	"github.com/joaomdsg/isore/internal/serve"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

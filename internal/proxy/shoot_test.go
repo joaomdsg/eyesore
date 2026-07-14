@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
-	"github.com/joaomdsg/eyesore/internal/proxy"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/notes"
+	"github.com/joaomdsg/isore/internal/proxy"
+	"github.com/joaomdsg/isore/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func dispatchNote(t *testing.T, base, payload string) {
 	t.Helper()
-	resp, err := http.Post(base+"/__eyesore/dispatch", "application/json", strings.NewReader(payload))
+	resp, err := http.Post(base+"/__isore/dispatch", "application/json", strings.NewReader(payload))
 	require.NoError(t, err)
 	resp.Body.Close()
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)

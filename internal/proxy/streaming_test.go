@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/proxy"
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/proxy"
+	"github.com/joaomdsg/isore/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

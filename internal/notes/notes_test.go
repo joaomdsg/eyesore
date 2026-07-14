@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/joaomdsg/eyesore/internal/notes"
+	"github.com/joaomdsg/isore/internal/notes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -115,17 +115,17 @@ func TestNewSinceSurfacesOnlyNotesDispatchedAfterTheCheckpoint(t *testing.T) {
 
 func TestScreenshotPathPointsWhereTheHarnessSavedIt(t *testing.T) {
 	t.Parallel()
-	got := notes.ScreenshotPath("/tmp/eyesore-out", "es_1_ab")
-	assert.Equal(t, "/tmp/eyesore-out/screenshots/es_1_ab.png", got)
+	got := notes.ScreenshotPath("/tmp/isore-out", "es_1_ab")
+	assert.Equal(t, "/tmp/isore-out/screenshots/es_1_ab.png", got)
 }
 
 func TestHostileNoteIDsCannotEscapeTheScreenshotsDir(t *testing.T) {
 	t.Parallel()
 	// dispatch is a network endpoint: ids are attacker-controlled input
 	for _, id := range []string{"../../../etc/cron.d/x", "..", "a/b", `a\b`, ""} {
-		got := notes.ScreenshotPath("/tmp/eyesore-out", id)
-		assert.True(t, strings.HasPrefix(got, "/tmp/eyesore-out/screenshots/"), got)
-		assert.NotContains(t, got[len("/tmp/eyesore-out/screenshots/"):], "/", got)
+		got := notes.ScreenshotPath("/tmp/isore-out", id)
+		assert.True(t, strings.HasPrefix(got, "/tmp/isore-out/screenshots/"), got)
+		assert.NotContains(t, got[len("/tmp/isore-out/screenshots/"):], "/", got)
 	}
 }
 

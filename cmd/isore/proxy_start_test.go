@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/joaomdsg/eyesore/internal/store"
+	"github.com/joaomdsg/isore/internal/store"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,7 +48,7 @@ func TestStartProxyServesInjectedApp(t *testing.T) {
 	t.Cleanup(func() { _ = h.http.Close() })
 
 	body := getBody(t, base+"/")
-	require.Contains(t, body, `<script src="/__eyesore/overlay.js"></script>`)
+	require.Contains(t, body, `<script src="/__isore/overlay.js"></script>`)
 	require.Contains(t, body, "hi")
 }
 
