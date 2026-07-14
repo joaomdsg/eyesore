@@ -45,7 +45,8 @@ The agent doesn't just read your notes — it gets the browser:
   (badge turns green, summary shows in the overlay).
 - **Eyes**: `get_screenshot` returns the element PNG captured at dispatch;
   `browser_screenshot` captures the live page or element to verify a fix.
-- **Hands**: `browser_eval` (run JS, read computed styles/state),
+- **Hands**: `browser_eval` (run JS — read computed styles/state, click,
+  type, drive the UI),
   `browser_html` (live DOM), `browser_navigate`, `browser_console`
   (logs/warnings/errors).
 
@@ -64,11 +65,5 @@ agent's browser tools attach to the very browser you're looking at.
 Flags: `-out` store path, `-chrome` browser binary.
 
 Notes live in `isore-out/notes.json`; every command takes `-out`.
-
-## Roadmap
-
-Deeper context capture (component source via sourcemaps) · agent
-self-verification with before/after screenshots · flow recording →
-reproducible tests.
 
 MIT.

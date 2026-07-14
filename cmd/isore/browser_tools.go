@@ -109,7 +109,7 @@ func addBrowserTools(server *mcp.Server, h *serve.Handlers, pool *driverPool) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "browser_eval",
-		Description: "Run a JavaScript expression in the live page and get its JSON result — inspect state, computed styles, anything the DevTools console could.",
+		Description: "Run a JavaScript expression in the live page and get its JSON result — inspect state, computed styles, anything the DevTools console could. Also your hands: drive the UI by evaluating clicks, input, form fills (e.g. document.querySelector('button').click()).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in evalIn) (*mcp.CallToolResult, any, error) {
 		d, err := pool.get(ctx)
 		if err != nil {
