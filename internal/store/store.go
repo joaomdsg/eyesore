@@ -92,6 +92,33 @@ func (s *Store) MarkWorking(id string) error {
 	})
 }
 
+// Delete removes a note from the store permanently.
+func (s *Store) Delete(id string) error {
+	return s.locked(func() error {
+		all, err := s.Load()
+		if err != nil {
+			return err
+		}
+		return s.write(notes.Delete(all, id))
+	})
+}
+
+// AddComment appends a timestamped follow-up to a note and persists, without
+// touching the note's original text.
+func (s *Store) AddComment(id string, text string, now int64) error {
+	return s.locked(func() error {
+		all, err := s.Load()
+		if err != nil {
+			return err
+		}
+		updated, err := notes.AddComment(all, id, text, now)
+		if err != nil {
+			return err
+		}
+		return s.write(updated)
+	})
+}
+
 // Await polls until a pending note dispatched after since (unix ms) appears,
 // returning the fresh notes. Context expiry is a normal empty result.
 func (s *Store) Await(ctx context.Context, since int64, poll time.Duration) ([]notes.Note, error) {

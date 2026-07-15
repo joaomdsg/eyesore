@@ -32,28 +32,29 @@ func TestParseDeleteEvent(t *testing.T) {
 	}
 }
 
-func TestParseEditEvent(t *testing.T) {
+func TestParseCommentEvent(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
 		wantID   string
-		wantNote string
+		wantText string
 		wantOk   bool
 	}{
-		{"valid", `{"id":"es_1","note":"hello"}`, "es_1", "hello", true},
-		{"empty id", `{"id":"","note":"x"}`, "", "", false},
-		{"missing note", `{"id":"es_1"}`, "es_1", "", true},
+		{"valid", `{"id":"es_1","text":"hello"}`, "es_1", "hello", true},
+		{"empty id", `{"id":"","text":"x"}`, "", "", false},
+		{"missing text", `{"id":"es_1"}`, "", "", false},
+		{"empty text", `{"id":"es_1","text":""}`, "", "", false},
 		{"invalid json", `{broken`, "", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := parseEditEvent([]byte(tt.input))
+			got, ok := parseCommentEvent([]byte(tt.input))
 			assert.Equal(t, tt.wantOk, ok)
 			if ok {
 				assert.Equal(t, tt.wantID, got.ID)
-				assert.Equal(t, tt.wantNote, got.Note)
+				assert.Equal(t, tt.wantText, got.Text)
 			}
 		})
 	}

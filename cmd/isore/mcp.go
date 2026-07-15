@@ -130,7 +130,9 @@ type markFixedOut struct {
 // instructions is surfaced to the connecting model on initialize. It describes
 // the loop the agent runs itself: block on await_notes, fix the batch, repeat.
 // No subagents — handing notes to workers loses the conversation's context.
-const instructions = `Isore turns a user's live browser annotations into coding tasks. The user clicks an element in their running web app, writes a note about what to change, and hits Dispatch. You fix the code and their page updates live: badges turn amber while you work, green with your summary when done, and the page reloads after a rebuild. The overlay freezes while you work, so the user cannot dispatch again until you finish the batch — finish it promptly.
+const instructions = `Isore turns a user's live browser annotations into coding tasks. The user clicks an element in their running web app, writes a note about what to change, and hits Dispatch. You fix the code and their page updates live: badges turn blue the instant a note is dispatched, amber once you call mark_working, and green with your summary when done. The overlay freezes from the moment of dispatch (not just while you work), so the user cannot annotate or re-dispatch until you finish the batch — finish it promptly.
+
+The user can attach follow-up comments to an already-dispatched note instead of rewriting it — read a note's "comments" field (oldest first) for that running context; the original "note" text never changes underneath you.
 
 Do ALL of this yourself, in the main conversation. Do NOT delegate dispatches to subagents or background workers: they lack your context about the codebase and the session.
 
@@ -138,7 +140,7 @@ Do ALL of this yourself, in the main conversation. Do NOT delegate dispatches to
 
 2. LISTEN: call await_notes(sinceMs). It BLOCKS until the user dispatches, or returns empty on timeout; on empty, call it again to keep listening. Pass sinceMs=0 on the first call (means "anything from now on"); afterwards pass the largest dispatchedAt you have already handled, so you never reprocess a batch.
 
-3. ACT on the returned batch (all notes from one Dispatch). For each note: call mark_working(id) first (badge turns amber and the overlay freezes so the user knows you picked it up); get_screenshot(id) to see exactly what the user saw at dispatch; use the note's note/selector/label/url to make the code change; verify against the live page with browser_screenshot / browser_eval / browser_html if useful; then mark_fixed(id, summary) with a short, user-facing summary (badge turns green, the summary shows in the overlay, and once every note is fixed the overlay thaws).
+3. ACT on the returned batch (all notes from one Dispatch). For each note: call mark_working(id) first (badge turns amber, so the user knows you picked it up); get_screenshot(id) to see exactly what the user saw at dispatch; use the note's note/selector/label/url to make the code change; verify against the live page with browser_screenshot / browser_eval / browser_html if useful; then mark_fixed(id, summary) with a short, user-facing summary (badge turns green, the summary shows in the overlay, and once every note is fixed the overlay thaws).
 
 4. When the whole batch is fixed and the app has rebuilt, call reload_page once so the user's tabs refresh, then go back to step 2.
 

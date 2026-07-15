@@ -174,3 +174,50 @@ func TestParseAcceptsAnEmptyDispatch(t *testing.T) {
 	require.True(t, ok)
 	assert.Empty(t, got)
 }
+
+func TestDeleteRemovesOnlyTheTargetNote(t *testing.T) {
+	t.Parallel()
+	all := []notes.Note{n("a", 100, 0), n("b", 100, 0)}
+	got := notes.Delete(all, "a")
+	require.Len(t, got, 1)
+	assert.Equal(t, "b", got[0].ID)
+}
+
+func TestDeleteOfUnknownIDIsANoOp(t *testing.T) {
+	t.Parallel()
+	all := []notes.Note{n("a", 100, 0)}
+	got := notes.Delete(all, "nope")
+	assert.Len(t, got, 1)
+}
+
+func TestAddCommentAppendsWithoutOverwritingNoteText(t *testing.T) {
+	t.Parallel()
+	all := []notes.Note{n("a", 100, 0)}
+	updated, err := notes.AddComment(all, "a", "also check the footer", 500)
+	require.NoError(t, err)
+	require.Len(t, updated, 1)
+	assert.Equal(t, "note a", updated[0].Note, "comment must not overwrite the original note text")
+	require.Len(t, updated[0].Comments, 1)
+	assert.Equal(t, "also check the footer", updated[0].Comments[0].Text)
+	assert.Equal(t, int64(500), updated[0].Comments[0].At)
+	assert.Equal(t, int64(500), updated[0].EditedAt, "comment bumps editedAt so it is re-dispatched")
+	assert.Empty(t, all[0].Comments, "caller's slice must not be mutated")
+}
+
+func TestAddCommentAccumulatesAcrossCalls(t *testing.T) {
+	t.Parallel()
+	all := []notes.Note{n("a", 100, 0)}
+	once, err := notes.AddComment(all, "a", "first", 500)
+	require.NoError(t, err)
+	twice, err := notes.AddComment(once, "a", "second", 600)
+	require.NoError(t, err)
+	require.Len(t, twice[0].Comments, 2)
+	assert.Equal(t, "first", twice[0].Comments[0].Text)
+	assert.Equal(t, "second", twice[0].Comments[1].Text)
+}
+
+func TestAddCommentOnUnknownIDFails(t *testing.T) {
+	t.Parallel()
+	_, err := notes.AddComment([]notes.Note{n("a", 100, 0)}, "nope", "x", 500)
+	assert.Error(t, err)
+}

@@ -100,6 +100,8 @@ func NewServer(target *url.URL, st *store.Store, overlay []byte, poll time.Durat
 		w.Write(s.overlay)
 	})
 	s.mux.HandleFunc("POST /__isore/dispatch", s.handleDispatch)
+	s.mux.HandleFunc("POST /__isore/delete", s.handleDelete)
+	s.mux.HandleFunc("POST /__isore/comment", s.handleComment)
 	s.mux.HandleFunc("POST /__isore/reload", func(w http.ResponseWriter, r *http.Request) {
 		s.broadcast(event{name: "reload", data: "{}"})
 		w.WriteHeader(http.StatusNoContent)
@@ -161,6 +163,41 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 			defer s.inflight.Done()
 			s.captureAll(dispatched)
 		}()
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type deleteBody struct {
+	ID string `json:"id"`
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	var b deleteBody
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxDispatchBytes)).Decode(&b); err != nil || b.ID == "" {
+		http.Error(w, "body must be {\"id\":...}", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.Delete(b.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type commentBody struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+}
+
+func (s *Server) handleComment(w http.ResponseWriter, r *http.Request) {
+	var b commentBody
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxDispatchBytes)).Decode(&b); err != nil || b.ID == "" || b.Text == "" {
+		http.Error(w, "body must be {\"id\":...,\"text\":...}", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.AddComment(b.ID, b.Text, time.Now().UnixMilli()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -255,6 +292,13 @@ func (s *Server) watch(poll time.Duration) {
 					continue
 				}
 				s.broadcast(event{name: "notes", data: string(data)})
+			}
+			for _, id := range notes.Removed(snapshot, current) {
+				data, err := json.Marshal(map[string]string{"id": id})
+				if err != nil {
+					continue
+				}
+				s.broadcast(event{name: "deleted", data: string(data)})
 			}
 			snapshot = current
 		}

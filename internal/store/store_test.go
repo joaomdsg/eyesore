@@ -75,6 +75,30 @@ func TestHarnessAndMCPProcessesSeeEachOthersWritesThroughTheFile(t *testing.T) {
 	assert.Equal(t, int64(500), got[0].FixedAt, "fixes must round-trip through the file too")
 }
 
+func TestDeletePersistsAcrossReload(t *testing.T) {
+	t.Parallel()
+	s := newStore(t)
+	require.NoError(t, s.Merge([]notes.Note{n("a", 100), n("b", 100)}))
+	require.NoError(t, s.Delete("a"))
+	got, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "b", got[0].ID)
+}
+
+func TestAddCommentPersistsAcrossReload(t *testing.T) {
+	t.Parallel()
+	s := newStore(t)
+	require.NoError(t, s.Merge([]notes.Note{n("a", 100)}))
+	require.NoError(t, s.AddComment("a", "also fix the footer", 500))
+	got, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Comments, 1)
+	assert.Equal(t, "also fix the footer", got[0].Comments[0].Text)
+	assert.Equal(t, "note a", got[0].Note, "comment must not overwrite the original note text")
+}
+
 func TestMarkingAnUnknownNoteFailsWithoutTouchingTheStore(t *testing.T) {
 	t.Parallel()
 	s := newStore(t)

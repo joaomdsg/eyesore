@@ -267,6 +267,73 @@ func TestAFreshTabCanReadCurrentAgentStateInsteadOfWaitingForChanges(t *testing.
 		"a page opened mid-fix must render the badge state it missed")
 }
 
+func TestDeleteEndpointRemovesTheNoteFromTheStore(t *testing.T) {
+	t.Parallel()
+	base, st := start(t, appServing("text/html", "<body></body>"))
+	require.NoError(t, st.Merge([]notes.Note{{ID: "es_1", Note: "fix", DispatchedAt: 5}}))
+
+	resp, err := http.Post(base+"/__isore/delete", "application/json", strings.NewReader(`{"id":"es_1"}`))
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+
+	all, err := st.Load()
+	require.NoError(t, err)
+	assert.Empty(t, all, "the close button must actually delete the note, not just hide it client-side")
+}
+
+func TestDeleteOfAnUnknownIDIsRejected(t *testing.T) {
+	t.Parallel()
+	base, _ := start(t, appServing("text/html", "<body></body>"))
+	resp, err := http.Post(base+"/__isore/delete", "application/json", strings.NewReader(`{"id":""}`))
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestADeletedNoteIsBroadcastToOpenTabs(t *testing.T) {
+	t.Parallel()
+	base, st := start(t, appServing("text/html", "<body></body>"))
+	require.NoError(t, st.Merge([]notes.Note{{ID: "es_1", Note: "fix", DispatchedAt: 5}}))
+	tab := sse(t, base)
+
+	resp, err := http.Post(base+"/__isore/delete", "application/json", strings.NewReader(`{"id":"es_1"}`))
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	got := waitFor(t, tab, "deleted")
+	assert.Contains(t, got, `"id":"es_1"`)
+}
+
+func TestCommentEndpointAppendsWithoutOverwritingTheNote(t *testing.T) {
+	t.Parallel()
+	base, st := start(t, appServing("text/html", "<body></body>"))
+	require.NoError(t, st.Merge([]notes.Note{{ID: "es_1", Note: "fix the header", DispatchedAt: 5}}))
+
+	resp, err := http.Post(base+"/__isore/comment", "application/json",
+		strings.NewReader(`{"id":"es_1","text":"also check mobile"}`))
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+
+	all, err := st.Load()
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.Equal(t, "fix the header", all[0].Note, "a comment must not replace the original note text")
+	require.Len(t, all[0].Comments, 1)
+	assert.Equal(t, "also check mobile", all[0].Comments[0].Text)
+}
+
+func TestCommentOnAnUnknownIDIsRejected(t *testing.T) {
+	t.Parallel()
+	base, _ := start(t, appServing("text/html", "<body></body>"))
+	resp, err := http.Post(base+"/__isore/comment", "application/json",
+		strings.NewReader(`{"id":"ghost","text":"x"}`))
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+}
+
 func TestASecondDispatchThroughTheProxyKeepsTheFirst(t *testing.T) {
 	t.Parallel()
 	base, st := start(t, appServing("text/html", "<body></body>"))

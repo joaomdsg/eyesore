@@ -116,3 +116,26 @@ func TestAFixArrivingWithNoOtherChangeStillRepaints(t *testing.T) {
 	require.Len(t, changed, 1)
 	assert.Equal(t, "done", changed[0].AgentSummary)
 }
+
+func TestDiffCatchesACommentEvenThoughNoteTextIsUnchanged(t *testing.T) {
+	t.Parallel()
+	before := []notes.Note{n("a", 100, 0)}
+	after, err := notes.AddComment(before, "a", "one more thing", 500)
+	require.NoError(t, err)
+	changed := notes.Diff(before, after)
+	require.Len(t, changed, 1, "a slice-valued field must still be compared for equality")
+	assert.Equal(t, "one more thing", changed[0].Comments[0].Text)
+}
+
+func TestRemovedReportsDeletedNoteIDs(t *testing.T) {
+	t.Parallel()
+	before := []notes.Note{n("a", 100, 0), n("b", 100, 0)}
+	after := notes.Delete(before, "a")
+	assert.Equal(t, []string{"a"}, notes.Removed(before, after))
+}
+
+func TestRemovedIsEmptyWhenNothingWasDeleted(t *testing.T) {
+	t.Parallel()
+	before := []notes.Note{n("a", 100, 0)}
+	assert.Empty(t, notes.Removed(before, before))
+}

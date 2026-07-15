@@ -6,9 +6,9 @@ type deleteEvent struct {
 	ID string `json:"id"`
 }
 
-type editEvent struct {
+type commentEvent struct {
 	ID   string `json:"id"`
-	Note string `json:"note"`
+	Text string `json:"text"`
 }
 
 func parseDeleteEvent(data []byte) (deleteEvent, bool) {
@@ -19,9 +19,9 @@ func parseDeleteEvent(data []byte) (deleteEvent, bool) {
 	return e, true
 }
 
-func parseEditEvent(data []byte) (editEvent, bool) {
-	var e editEvent
-	if err := json.Unmarshal(data, &e); err != nil || e.ID == "" {
+func parseCommentEvent(data []byte) (commentEvent, bool) {
+	var e commentEvent
+	if err := json.Unmarshal(data, &e); err != nil || e.ID == "" || e.Text == "" {
 		return e, false
 	}
 	return e, true
@@ -39,7 +39,17 @@ const overlayJS = `
     if(window.esDispatch){window.esDispatch(json);return;}
     fetch('/__isore/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
   }
-  function applyServerNotes(list){
+  function shipDelete(noteId){
+    if(window.esDelete){window.esDelete(JSON.stringify({id:noteId}));return;}
+    fetch('/__isore/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:noteId})});
+  }
+  function shipComment(noteId,text){
+    if(window.esComment){window.esComment(JSON.stringify({id:noteId,text:text}));return;}
+    fetch('/__isore/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:noteId,text:text})});
+  }
+  // applyDiff is additive/update-only: safe for the SSE 'notes' event, which
+  // streams only what changed, never the full set.
+  function applyDiff(list){
     var touched=false;
     list.forEach(function(c){
       var found=false;
@@ -48,6 +58,7 @@ const overlayJS = `
           notes[i].agentStatus=c.agentStatus;
           notes[i].agentSummary=c.agentSummary;
           notes[i].fixedAt=c.fixedAt;
+          notes[i].comments=c.comments;
           found=true;touched=true;
         }
       }
@@ -55,11 +66,21 @@ const overlayJS = `
     });
     if(touched){save();applyEnabled();}
   }
+  // applyFull additionally drops any locally-held note that the server no
+  // longer has: /__isore/notes returns every note, so absence is authoritative
+  // deletion — unlike the SSE diff stream, which never carries "this is everything".
+  function applyFull(list){
+    applyDiff(list);
+    var serverIds={};list.forEach(function(c){serverIds[c.id]=true;});
+    var before=notes.length;
+    notes=notes.filter(function(n){return n.dispatchedAt===0||serverIds[n.id];});
+    if(notes.length!==before){save();applyEnabled();}
+  }
   // reconcile pulls the authoritative note state: SSE only streams diffs, so
   // any gap in the stream (tab closed, proxy restarted) is healed here.
   function reconcile(){
     fetch('/__isore/notes').then(function(r){return r.json();})
-      .then(applyServerNotes).catch(function(){});
+      .then(applyFull).catch(function(){});
   }
   function listen(){
     if(!proxyMode||window.__esSSE)return;
@@ -71,7 +92,15 @@ const overlayJS = `
       es.onerror=function(){sseLive=false;renderStatus();};
       es.addEventListener('reload',function(){location.reload();});
       es.addEventListener('notes',function(ev){
-        try{applyServerNotes(JSON.parse(ev.data)||[]);}catch(_){}
+        try{applyDiff(JSON.parse(ev.data)||[]);}catch(_){}
+      });
+      es.addEventListener('deleted',function(ev){
+        try{
+          var d=JSON.parse(ev.data);
+          var before=notes.length;
+          notes=notes.filter(function(n){return n.id!==d.id;});
+          if(notes.length!==before){save();applyEnabled();}
+        }catch(_){}
       });
     }catch(_){}
   }
@@ -164,6 +193,7 @@ const overlayJS = `
       '.es-item:hover{background:rgba(255,255,255,0.05)}',
       '.es-item .es-item-dot{flex-shrink:0;width:8px;height:8px;',
         'border-radius:50%;margin-top:4px;background:#ff3b30}',
+      '.es-item.es-dispatched .es-item-dot{background:#5a76f5}',
       '.es-item.es-working .es-item-dot{background:#f5a623}',
       '.es-item.es-fixed .es-item-dot{background:#1a7f4b}',
       '.es-item .es-item-body{min-width:0}',
@@ -207,6 +237,8 @@ const overlayJS = `
         'animation:es-fadeIn .15s ease-out}',
       '.es-pop-note{margin-bottom:8px;white-space:pre-wrap;word-break:break-word;',
         'color:#e8e8e8}',
+      '.es-pop-comment{margin-bottom:6px;padding-left:8px;border-left:2px solid #444;',
+        'white-space:pre-wrap;word-break:break-word;color:#bbb;font-size:12px}',
       '.es-pop-meta{font-size:11px;color:#666;margin-bottom:8px}',
       '.es-pop-agent{font-size:12px;color:#7fd6a4;margin-bottom:8px}',
       '.es-pop-actions{display:flex;gap:6px;justify-content:flex-end}',
@@ -261,15 +293,18 @@ const overlayJS = `
         'animation:es-scaleIn .2s ease-out;',
         'transition:transform .15s ease,box-shadow .15s ease;user-select:none}',
       '[data-es=badge]:hover{transform:scale(1.15)}',
+      '[data-es=badge][data-es-state=dispatched]{background:#5a76f5}',
       '[data-es=badge][data-es-state=working]{background:#f5a623}',
       '[data-es=badge][data-es-state=fixed]{background:#2f9e68}',
       '[data-es-marked]{outline:1.5px solid rgba(229,72,77,.35)!important;',
         'outline-offset:3px;border-radius:3px;',
         'transition:outline-color .18s ease,outline-offset .18s ease}',
+      '[data-es-marked=dispatched]{outline-color:rgba(90,118,245,.4)!important}',
       '[data-es-marked=working]{outline-color:rgba(245,166,35,.4)!important}',
       '[data-es-marked=fixed]{outline-color:rgba(47,158,104,.4)!important}',
       '[data-es-marked]:hover{outline-width:2.5px;outline-offset:2px;',
         'outline-color:rgba(229,72,77,.9)!important}',
+      '[data-es-marked=dispatched]:hover{outline-color:rgba(90,118,245,.95)!important}',
       '[data-es-marked=working]:hover{outline-color:rgba(245,166,35,.95)!important}',
       '[data-es-marked=fixed]:hover{outline-color:rgba(47,158,104,.95)!important}'
     ].join('');
@@ -406,7 +441,7 @@ const overlayJS = `
     }
     notes.forEach(function(n,i){
       var it=document.createElement('div');
-      it.className='es-item'+(n.agentStatus==='working'?' es-working':(n.fixedAt?' es-fixed':''));
+      it.className='es-item'+(n.agentStatus==='working'?' es-working':(n.fixedAt?' es-fixed':(n.dispatchedAt>0?' es-dispatched':'')));
       var dot=document.createElement('div');dot.className='es-item-dot';
       var body=document.createElement('div');body.className='es-item-body';
       var txt=document.createElement('div');txt.className='es-item-note';
@@ -439,14 +474,27 @@ const overlayJS = `
     for(var i=0;i<notes.length;i++){if(notes[i].agentStatus==='working')return true;}
     return false;
   }
+  // isFrozen covers both the 'dispatched' state (sent, agent hasn't picked it
+  // up yet) and 'working' (agent is on it) \u2014 a note stops freezing the
+  // overlay only once it's fixed.
+  function isFrozen(){
+    for(var i=0;i<notes.length;i++){
+      if(notes[i].dispatchedAt>0&&!notes[i].fixedAt)return true;
+    }
+    return false;
+  }
   function applyEnabled(){
-    // The whole annotator freezes while the agent works: mid-fix edits,
-    // deletes, or dispatches would collide with the agent's changes.
-    if(toggleInput){toggleInput.checked=enabled;toggleInput.disabled=anyWorking();}
+    // The whole annotator freezes from the moment notes are dispatched: mid-fix
+    // edits, deletes, or re-dispatches would collide with the agent's changes.
+    if(toggleInput){toggleInput.checked=enabled;toggleInput.disabled=isFrozen();}
     if(dispatchBtn){
       var c=countEdited();
       if(anyWorking()){
         dispatchBtn.textContent='agent working\u2026';
+        dispatchBtn.disabled=true;
+        dispatchBtn.className='';
+      }else if(isFrozen()){
+        dispatchBtn.textContent='dispatched\u2026';
         dispatchBtn.disabled=true;
         dispatchBtn.className='';
       }else{
@@ -500,7 +548,7 @@ const overlayJS = `
           badge.addEventListener('mouseleave',function(){scheduleHidePopover();},true);
           badgeLayer.appendChild(badge);
         }
-        var state=n.agentStatus==='working'?'working':(n.fixedAt?'fixed':'pending');
+        var state=n.agentStatus==='working'?'working':(n.fixedAt?'fixed':(n.dispatchedAt>0?'dispatched':'pending'));
         badge.__esNote=n;badge.__esEl=el;
         badge.textContent=String(i+1);
         badge.setAttribute('data-es-state',state);
@@ -544,14 +592,16 @@ const overlayJS = `
     pop.style.left=left+'px';pop.style.top=top+'px';
     var agentLine=note.agentStatus?('<div class="es-pop-agent">'+
       (note.agentStatus==='working'?'&#9203; agent working&hellip;':'&#10003; '+esc(note.agentSummary||'fixed'))+'</div>'):'';
-    pop.innerHTML='<div class="es-pop-note">'+esc(note.note)+'</div>'+agentLine+
+    var commentsLine=(note.comments&&note.comments.length)?
+      note.comments.map(function(c){return '<div class="es-pop-comment">'+esc(c.text)+'</div>';}).join(''):'';
+    pop.innerHTML='<div class="es-pop-note">'+esc(note.note)+'</div>'+commentsLine+agentLine+
       '<div class="es-pop-meta">'+esc(note.selector)+'</div>'+
       '<div class="es-pop-actions">'+
-      '<button data-es="pop-edit" class="es-btn es-btn-edit">Edit</button>'+
+      '<button data-es="pop-edit" class="es-btn es-btn-edit">Comment</button>'+
       '<button data-es="pop-del" class="es-btn es-btn-del">Close</button></div>';
     pop.addEventListener('mouseenter',function(){clearTimeout(popTimer);},true);
     pop.addEventListener('mouseleave',function(){scheduleHidePopover();},true);
-    pop.querySelector('[data-es=pop-edit]').addEventListener('click',function(ev){ev.stopPropagation();hidePopover();openInlineEdit(el,note);},true);
+    pop.querySelector('[data-es=pop-edit]').addEventListener('click',function(ev){ev.stopPropagation();hidePopover();openInlineComment(el,note);},true);
     pop.querySelector('[data-es=pop-del]').addEventListener('click',function(ev){ev.stopPropagation();confirmDelete(el,note,pop);},true);
     root.appendChild(pop);popEl=pop;
   }
@@ -560,15 +610,15 @@ const overlayJS = `
 
   // ── delete confirm ─────────────────────────────────────────
   function confirmDelete(el,note,pop){
-    if(anyWorking())return;
+    if(isFrozen())return;
     pop.querySelector('.es-pop-actions').innerHTML=
       '<button data-es="del-cancel" class="es-btn es-btn-cancel">Cancel</button>'+
       '<button data-es="del-confirm" class="es-btn es-btn-confirm">Confirm</button>';
     pop.querySelector('[data-es=del-cancel]').addEventListener('click',function(ev){ev.stopPropagation();hidePopover();},true);
     pop.querySelector('[data-es=del-confirm]').addEventListener('click',function(ev){
       ev.stopPropagation();hidePopover();
-      notes=notes.filter(function(n){return n.id!==note.id;});save();renderBadges();
-      if(window.esDelete)window.esDelete(JSON.stringify({id:note.id}));
+      notes=notes.filter(function(n){return n.id!==note.id;});save();renderBadges();applyEnabled();
+      shipDelete(note.id);
     },true);
   }
 
@@ -587,7 +637,7 @@ const overlayJS = `
 
   // ── inline input (new note) ────────────────────────────────
   function openInline(el){
-    if(dialogOpen||anyWorking())return;dialogOpen=true;
+    if(dialogOpen||isFrozen())return;dialogOpen=true;
     if(hi)hi.style.display='none';
     var card=buildInlineCard(el,selectorOf(el));
     card.innerHTML='<div class="es-inline-hint">'+esc(selectorOf(el))+'</div>'+
@@ -616,17 +666,17 @@ const overlayJS = `
   }
 
   // ── inline edit ────────────────────────────────────────────
-  function openInlineEdit(el,note){
-    if(dialogOpen||anyWorking())return;dialogOpen=true;
+  function openInlineComment(el,note){
+    if(dialogOpen||isFrozen())return;dialogOpen=true;
     var card=buildInlineCard(el);
-    card.innerHTML='<div class="es-inline-hint">Edit note</div>'+
-      '<textarea data-es="in" rows="3" placeholder="Note text\u2026">'+esc(note.note)+'</textarea>'+
+    card.innerHTML='<div class="es-inline-hint">Add a comment</div>'+
+      '<textarea data-es="in" rows="3" placeholder="Add a comment\u2026"></textarea>'+
       '<div class="es-inline-actions">'+
       '<button data-es="cancel" class="es-btn es-btn-cancel">Cancel</button>'+
       '<button data-es="save" class="es-btn es-btn-save">Save</button></div>'+
       '<div class="es-inline-shortcut">\u2318\u21E7\u23CE to save \u00b7 Esc to cancel</div>';
     root.appendChild(card);
-    var input=card.querySelector('[data-es=in]');input.focus();input.select();
+    var input=card.querySelector('[data-es=in]');input.focus();
     var close=function(){card.remove();dialogOpen=false;};
     card.querySelector('[data-es=cancel]').addEventListener('click',function(ev){ev.stopPropagation();close();},true);
     card.querySelector('[data-es=save]').addEventListener('click',function(ev){
@@ -634,9 +684,13 @@ const overlayJS = `
       if(v){
         var now=Date.now();
         for(var i=0;i<notes.length;i++){
-          if(notes[i].id===note.id){notes[i].note=v;notes[i].editedAt=now;break;}
+          if(notes[i].id===note.id){
+            notes[i].comments=(notes[i].comments||[]).concat([{text:v,at:now}]);
+            notes[i].editedAt=now;
+            break;
+          }
         }save();renderBadges();
-        if(window.esEdit)window.esEdit(JSON.stringify({id:note.id,note:v}));
+        shipComment(note.id,v);
       }close();
     },true);
     input.addEventListener('keydown',function(ev){
@@ -647,7 +701,7 @@ const overlayJS = `
 
   // ── dispatch ───────────────────────────────────────────────
   function dispatch(){
-    if(!enabled||notes.length===0||anyWorking())return;
+    if(!enabled||notes.length===0||isFrozen())return;
     var edited=notes.filter(function(n){return n.dispatchedAt===0||n.editedAt>n.dispatchedAt;});
     if(edited.length===0){
       if(dispatchBtn){dispatchBtn.textContent='Nothing new';
@@ -657,7 +711,7 @@ const overlayJS = `
     }
     var now=Date.now();
     notes.forEach(function(n){if(n.dispatchedAt===0||n.editedAt>n.dispatchedAt)n.dispatchedAt=now;});
-    save();renderBadges();
+    save();renderBadges();applyEnabled();
     ship(JSON.stringify(edited));
     if(dispatchBtn){dispatchBtn.textContent='Dispatched '+edited.length+' \u2713';
       dispatchBtn.className='es-green';
@@ -668,13 +722,13 @@ const overlayJS = `
   // ── hover highlight ────────────────────────────────────────
   document.addEventListener('mousemove',function(e){
     if(!hi||!enabled)return;var el=e.target;
-    if(dialogOpen||isES(el)||anyWorking()){hi.style.display='none';return;}
+    if(dialogOpen||isES(el)||isFrozen()){hi.style.display='none';return;}
     var r=el.getBoundingClientRect();
     Object.assign(hi.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
   },true);
 
   document.addEventListener('click',function(e){
-    if(!enabled||anyWorking())return;var el=e.target;
+    if(!enabled||isFrozen())return;var el=e.target;
     if(isES(el))return;
     e.preventDefault();e.stopPropagation();
     openInline(el);

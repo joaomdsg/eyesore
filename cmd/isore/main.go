@@ -80,7 +80,7 @@ func main() {
 	if err := chromedp.Run(ctx,
 		runtime.AddBinding("esDispatch"),
 		runtime.AddBinding("esDelete"),
-		runtime.AddBinding("esEdit"),
+		runtime.AddBinding("esComment"),
 		runtime.AddBinding("esToggle"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			_, err := page.AddScriptToEvaluateOnNewDocument(overlayJS).Do(ctx)
@@ -128,15 +128,25 @@ func handleBinding(ctx context.Context, be *runtime.EventBindingCalled, outPath,
 
 	case "esDelete":
 		e, ok := parseDeleteEvent([]byte(be.Payload))
-		if ok {
-			fmt.Printf("note closed: %s\n", e.ID)
+		if !ok {
+			return
 		}
+		if err := store.New(outPath).Delete(e.ID); err != nil {
+			fmt.Fprintln(os.Stderr, "store delete:", err)
+			return
+		}
+		fmt.Printf("note deleted: %s\n", e.ID)
 
-	case "esEdit":
-		e, ok := parseEditEvent([]byte(be.Payload))
-		if ok {
-			fmt.Printf("note edited: %s\n", e.ID)
+	case "esComment":
+		e, ok := parseCommentEvent([]byte(be.Payload))
+		if !ok {
+			return
 		}
+		if err := store.New(outPath).AddComment(e.ID, e.Text, time.Now().UnixMilli()); err != nil {
+			fmt.Fprintln(os.Stderr, "store comment:", err)
+			return
+		}
+		fmt.Printf("note commented: %s\n", e.ID)
 
 	case "esToggle":
 		fmt.Printf("harness toggled: %s\n", be.Payload)

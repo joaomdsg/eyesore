@@ -9,19 +9,28 @@ import (
 	"path/filepath"
 )
 
+// Comment is a follow-up the user attaches to an already-dispatched note,
+// instead of rewriting the note text. It gives the agent the running
+// conversation on a note rather than a single overwritten description.
+type Comment struct {
+	Text string `json:"text"`
+	At   int64  `json:"at"`
+}
+
 // Note is one UI annotation. FixedAt is zero until an agent marks it fixed.
 type Note struct {
-	ID           string `json:"id"`
-	Selector     string `json:"selector"`
-	Label        string `json:"label"`
-	Note         string `json:"note"`
-	URL          string `json:"url"`
-	CreatedAt    int64  `json:"createdAt"`
-	EditedAt     int64  `json:"editedAt"`
-	DispatchedAt int64  `json:"dispatchedAt"`
-	FixedAt      int64  `json:"fixedAt,omitempty"`
-	AgentStatus  string `json:"agentStatus,omitempty"`
-	AgentSummary string `json:"agentSummary,omitempty"`
+	ID           string    `json:"id"`
+	Selector     string    `json:"selector"`
+	Label        string    `json:"label"`
+	Note         string    `json:"note"`
+	URL          string    `json:"url"`
+	CreatedAt    int64     `json:"createdAt"`
+	EditedAt     int64     `json:"editedAt"`
+	DispatchedAt int64     `json:"dispatchedAt"`
+	FixedAt      int64     `json:"fixedAt,omitempty"`
+	AgentStatus  string    `json:"agentStatus,omitempty"`
+	AgentSummary string    `json:"agentSummary,omitempty"`
+	Comments     []Comment `json:"comments,omitempty"`
 }
 
 // Merge upserts incoming dispatched notes into the existing store contents.
@@ -69,6 +78,34 @@ func MarkFixed(all []Note, id string, now int64, summary string) ([]Note, error)
 				updated[i].AgentSummary = summary
 			}
 			updated[i].AgentStatus = StatusFixed
+			return updated, nil
+		}
+	}
+	return nil, fmt.Errorf("no note with id %q", id)
+}
+
+// Delete removes the note with the given id, if present.
+func Delete(all []Note, id string) []Note {
+	out := make([]Note, 0, len(all))
+	for _, n := range all {
+		if n.ID != id {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// AddComment appends a timestamped follow-up to the note with the given id
+// and bumps EditedAt, so the note is picked up as changed on the next
+// dispatch without its original text being overwritten. An unknown id is an
+// error.
+func AddComment(all []Note, id string, text string, now int64) ([]Note, error) {
+	updated := make([]Note, len(all))
+	copy(updated, all)
+	for i := range updated {
+		if updated[i].ID == id {
+			updated[i].Comments = append(append([]Comment{}, updated[i].Comments...), Comment{Text: text, At: now})
+			updated[i].EditedAt = now
 			return updated, nil
 		}
 	}

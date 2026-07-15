@@ -19,6 +19,8 @@ type NoteView struct {
 	URL          string `json:"url" jsonschema:"page the note was made on"`
 	DispatchedAt int64  `json:"dispatchedAt"`
 	Screenshot   string `json:"screenshot" jsonschema:"path to the element screenshot PNG"`
+
+	Comments []notes.Comment `json:"comments,omitempty" jsonschema:"follow-up remarks the user attached to this note after dispatch, oldest first — read these for extra context instead of expecting the note text itself to change"`
 }
 
 // Handlers implements the MCP tools over a shared note store.
@@ -78,6 +80,7 @@ func (h *Handlers) views(ns []notes.Note) []NoteView {
 			ID: n.ID, Selector: n.Selector, Label: n.Label, Note: n.Note,
 			URL: n.URL, DispatchedAt: n.DispatchedAt,
 			Screenshot: notes.ScreenshotPath(h.outDir, n.ID),
+			Comments:   n.Comments,
 		})
 	}
 	return out
